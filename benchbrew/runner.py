@@ -218,7 +218,7 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
             try:
                 result = sim.execute(world, name, args, ctx)
                 text = json.dumps(result, default=str)
-            except (PolicyError, ValueError, KeyError) as e:
+            except (PolicyError, ValueError, KeyError, TypeError) as e:
                 errors += 1
                 text = f"ERROR: {e}"
             messages.append(AgentMessage(role="tool", tool_call_id=tc.get("id"),

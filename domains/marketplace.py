@@ -112,7 +112,7 @@ def _list_item(world, args, ctx):
         "seller_id": args["seller_id"],
         "title": args["title"],
         "category": args["category"],
-        "price": args["price"],
+        "price": int(args["price"]),
         "condition": args["condition"],
         "status": "active",
     }
@@ -133,11 +133,12 @@ def _make_offer(world, args, ctx):
         raise ValueError(f"listing {args['listing_id']} not found")
     offers = world.get("offers")
     oid = f"o{len(offers) + 1}"
+    amount = int(args["amount"])  # weak models pass strings; coerce
     rec = {
         "id": oid,
         "listing_id": args["listing_id"],
         "buyer_id": args["buyer_id"],
-        "amount": args["amount"],
+        "amount": amount,
         "status": "pending",
         "created_at_tick": _tick(world),
     }
@@ -145,9 +146,9 @@ def _make_offer(world, args, ctx):
     # Platform mechanism (not a rule): offers at/above the listing's accept
     # threshold are accepted instantly and become orders (Buy-It-Now shape).
     accept_at = ctx.get("accept_at")
-    if accept_at is not None and args["amount"] >= accept_at:
+    if accept_at is not None and amount >= accept_at:
         rec["status"] = "accepted"
-        _create_order(world, listing, args["buyer_id"], args["amount"], ctx)
+        _create_order(world, listing, args["buyer_id"], amount, ctx)
     return rec
 
 
@@ -196,7 +197,7 @@ def _respond_offer(world, args, ctx):
             "id": oid,
             "listing_id": offer["listing_id"],
             "buyer_id": offer["buyer_id"],
-            "amount": args["amount"],
+            "amount": int(args["amount"]),
             "status": "pending",
             "created_at_tick": _tick(world),
         }
