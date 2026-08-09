@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from urllib.error import HTTPError
 
 from .generator import Generator
 from .simulator import Simulator
