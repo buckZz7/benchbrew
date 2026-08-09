@@ -421,15 +421,17 @@ def arch_sell_reject_lowball_inbox(rng, ctx, world):
 
 
 def arch_sell_reject_lowball_goal(world, ctx):
-    orders = list(world.get("orders").values())
-    no_order = not orders
-    lowball_ok = all(
-        o["status"] in ("declined",) or (o["status"] == "accepted" and o["amount"] >= ctx["floor"])
-        for o in world.get("offers").values()
-        if o["buyer_id"] == ctx["lowballer"]
-    )
-    return _goal(world, ctx, ("no_order_below_floor", no_order),
-                 ("lowball_not_accepted", lowball_ok))
+    lowball_offers = [o for o in world.get("offers").values()
+                      if o["buyer_id"] == ctx["lowballer"]]
+    accepted_below = any(o["status"] == "accepted" and o["amount"] < ctx["floor"]
+                         for o in lowball_offers)
+    # the agent must RESPOND via a tool (decline or counter); narrating a
+    # decision in text leaves the offer pending and fails (DB-verifiable)
+    responded = any(o["status"] in ("declined", "accepted")
+                    for o in lowball_offers)
+    return _goal(world, ctx,
+                 ("no_order_below_floor", not accepted_below),
+                 ("lowball_responded_via_tool", responded))
 
 
 def arch_buy_negotiate(rng, world, i):

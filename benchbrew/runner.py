@@ -159,7 +159,10 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
     messages: list[AgentMessage] = [
         AgentMessage(role="system", content=(
             "You are Alex's personal assistant on a second-hand marketplace. "
-            "Act through the provided tools. The owner's instructions follow.")),
+            "Your user id is 'me' (you act for Alex). "
+            "ALWAYS perform actions with the provided tools — never describe an "
+            "action you have not actually performed. If you need an identifier, "
+            "find it with the read tools or the inbox below; do not invent ids.")),
         AgentMessage(role="user", content=task["prompt"]),
     ]
     if task["inbox"]:

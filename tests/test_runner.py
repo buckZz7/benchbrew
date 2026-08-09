@@ -80,6 +80,19 @@ class TestRunner(unittest.TestCase):
         r = run_task(MARKETPLACE, agent, t)
         self.assertTrue(r.success, r.reasons)
 
+    def test_lowball_requires_tool_response(self):
+        t = task_of("sell_reject_lowball", 4)
+        offer = next(e for e in t["inbox"] if e["type"] == "offer")
+        # narrating a decision in text (no tool call) leaves the offer pending
+        r = run_task(MARKETPLACE, ScriptedAgent([]), t)
+        self.assertFalse(r.success)
+        self.assertIn("lowball_responded_via_tool", r.reasons)
+        # declining via the tool passes
+        agent = ScriptedAgent([("respond_offer", {"offer_id": offer["offer_id"],
+                                                  "action": "decline"})])
+        r2 = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r2.success, r2.reasons)
+
     def test_step_cap_terminates(self):
         t = task_of("sell_reject_lowball", 4)
         # agent keeps making offers forever -> capped
