@@ -1,10 +1,13 @@
-"""BenchBrew domain 3: personal banking — the money agent (Monzo-style).
+"""BenchBrew domain 3: personal finance — the money agent (Monzo-style).
 
 The evaluated agent is Alex's on-device personal-finance assistant. It
 manages the FULL money life: accounts, cards, transfers (Zelle-style P2P),
 bill pay, fraud response (Reg E reporting tiers), budgeting (categories +
 pots/savings goals), and subscriptions (renewals, cancellations, price
 hikes, phishing).
+
+Named personal_finance (not banking) to stay unambiguous against t2-bench's
+own banking_knowledge domain in the shared registry.
 
 Grounded policy (GROUNDING.md domain-3 section):
 - Reg E 1005.6 liability tiers: report an unauthorized transfer within 2
@@ -721,8 +724,8 @@ def arch_fraud_alert_review_goal(world, ctx):
 # Spec
 # ---------------------------------------------------------------------------
 
-BANKING = DomainSpec(
-    name="banking",
+PERSONAL_FINANCE = DomainSpec(
+    name="personal_finance",
     version="0.1.0",
     seed_world=seed_world,
     entities={

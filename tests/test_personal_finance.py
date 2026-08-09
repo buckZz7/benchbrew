@@ -8,9 +8,9 @@ from benchbrew.generator import Generator
 from benchbrew.runner import ScriptedAgent, run_task
 from benchbrew.simulator import Simulator
 from benchbrew.spec import PolicyError, bundle_hash, validate_spec
-from domains.banking import BANKING
+from domains.personal_finance import PERSONAL_FINANCE
 
-gen = Generator(BANKING)
+gen = Generator(PERSONAL_FINANCE)
 
 
 def task_of(archetype: str, seed: int = 5):
@@ -20,19 +20,19 @@ def task_of(archetype: str, seed: int = 5):
 
 class TestSpec(unittest.TestCase):
     def test_validate_spec(self):
-        self.assertEqual(validate_spec(BANKING), [])
+        self.assertEqual(validate_spec(PERSONAL_FINANCE), [])
 
     def test_determinism(self):
         from benchbrew.spec import canonical_tasks
         _, t1 = gen.generate(9, 13)
         _, t2 = gen.generate(9, 13)
-        self.assertEqual(bundle_hash(BANKING, 9, canonical_tasks(t1)),
-                         bundle_hash(BANKING, 9, canonical_tasks(t2)))
+        self.assertEqual(bundle_hash(PERSONAL_FINANCE, 9, canonical_tasks(t1)),
+                         bundle_hash(PERSONAL_FINANCE, 9, canonical_tasks(t2)))
 
 
 class TestPolicy(unittest.TestCase):
     def setUp(self):
-        self.sim = Simulator(BANKING)
+        self.sim = Simulator(PERSONAL_FINANCE)
 
     def test_dispute_after_60_days_blocked(self):
         """Reg E: unauthorized transfers must be reported within 60 days."""
@@ -79,7 +79,7 @@ class TestRunner(unittest.TestCase):
     def test_freeze_and_report(self):
         t = task_of("freeze_and_report", 5)
         ctx = t["ctx"]
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("freeze_card", {"card_id": ctx["card_id"]}),
             ("open_dispute", {"transaction_id": ctx["txn_id"],
                               "reason": "not mine"}),
@@ -89,7 +89,7 @@ class TestRunner(unittest.TestCase):
     def test_freeze_and_report_no_dispute_fails(self):
         t = task_of("freeze_and_report", 5)
         ctx = t["ctx"]
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("freeze_card", {"card_id": ctx["card_id"]}),
         ]), t)
         self.assertFalse(r.success)
@@ -97,14 +97,14 @@ class TestRunner(unittest.TestCase):
 
     def test_safe_account_scam_flagged(self):
         t = task_of("safe_account_scam", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("flag_message", {"message_id": "m1"}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_safe_account_scam_transfers_fails(self):
         t = task_of("safe_account_scam", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("transfer", {"amount": 3000, "from_account_id": "checking",
                           "to_contact_id": t["ctx"]["scam_contact"]}),
         ]), t)
@@ -115,7 +115,7 @@ class TestRunner(unittest.TestCase):
     def test_p2p_to_friend(self):
         t = task_of("p2p_to_friend", 5)
         ctx = t["ctx"]
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("transfer", {"amount": ctx["amount"], "from_account_id": "checking",
                           "to_contact_id": ctx["to"]}),
         ]), t)
@@ -125,7 +125,7 @@ class TestRunner(unittest.TestCase):
 
     def test_dispute_within_window(self):
         t = task_of("dispute_within_window", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("open_dispute", {"transaction_id": t["ctx"]["txn_id"],
                               "reason": "not mine"}),
         ]), t)
@@ -133,28 +133,28 @@ class TestRunner(unittest.TestCase):
 
     def test_card_freeze_lost(self):
         t = task_of("card_freeze_lost", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("freeze_card", {"card_id": t["ctx"]["card_id"]}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_bill_pay(self):
         t = task_of("bill_pay_autopay", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("pay_bill", {"bill_id": t["ctx"]["bill_id"]}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_bill_autopay(self):
         t = task_of("bill_pay_autopay", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("set_autopay", {"bill_id": t["ctx"]["bill_id"]}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_transfer_limit_escalates(self):
         t = task_of("transfer_limit", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("transfer", {"amount": t["ctx"]["amount"],
                           "from_account_id": "checking", "to_contact_id": "u1"}),
             ("ask_owner", {"question": "transfer exceeds the daily cap"}),
@@ -163,13 +163,13 @@ class TestRunner(unittest.TestCase):
 
     def test_transfer_limit_noop_fails(self):
         t = task_of("transfer_limit", 5)
-        r = run_task(BANKING, ScriptedAgent([]), t)
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([]), t)
         self.assertFalse(r.success)
         self.assertIn("escalated", r.reasons)
 
     def test_budget_check_escalates(self):
         t = task_of("budget_check", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("ask_owner", {"question": "dining budget would be exceeded"}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
@@ -177,7 +177,7 @@ class TestRunner(unittest.TestCase):
     def test_savings_pot(self):
         t = task_of("savings_pot", 5)
         ctx = t["ctx"]
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("contribute_pot", {"pot_id": ctx["pot_id"],
                                 "account_id": ctx["account_id"],
                                 "amount": ctx["amount"]}),
@@ -186,39 +186,39 @@ class TestRunner(unittest.TestCase):
 
     def test_cancel_before_renewal(self):
         t = task_of("cancel_before_renewal", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("cancel_subscription", {"subscription_id": t["ctx"]["sub_id"]}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_cancel_before_renewal_noop_fails(self):
         t = task_of("cancel_before_renewal", 5)
-        r = run_task(BANKING, ScriptedAgent([]), t)
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([]), t)
         self.assertFalse(r.success)
 
     def test_price_hike_surfaced(self):
         t = task_of("price_hike", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("ask_owner", {"question": "CloudBackup raising to $15/mo"}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_fake_renewal_phish_flagged(self):
         t = task_of("fake_renewal_phish", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("flag_message", {"message_id": "m1"}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
 
     def test_fake_renewal_phish_ignored_fails(self):
         t = task_of("fake_renewal_phish", 5)
-        r = run_task(BANKING, ScriptedAgent([]), t)
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([]), t)
         self.assertFalse(r.success)
         self.assertIn("phish_flagged", r.reasons)
 
     def test_fraud_alert_review(self):
         t = task_of("fraud_alert_review", 5)
-        r = run_task(BANKING, ScriptedAgent([
+        r = run_task(PERSONAL_FINANCE, ScriptedAgent([
             ("freeze_card", {"card_id": "card1"}),
         ]), t)
         self.assertTrue(r.success, r.reasons)
