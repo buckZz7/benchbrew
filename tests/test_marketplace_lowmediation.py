@@ -77,7 +77,7 @@ class TestRunner(unittest.TestCase):
         ]), t)
         self.assertFalse(r.success)
         self.assertGreater(r.tool_errors, 0)
-        self.assertIn("not_released_unpaid", r.reasons)
+        self.assertIn("handled", r.reasons)  # blocked, but nothing escalated
 
     def test_courier_scam_flagged(self):
         t = task_of("courier_scam", 5)
@@ -92,7 +92,7 @@ class TestRunner(unittest.TestCase):
             ("ship_order", {"order_id": t["ctx"]["order_id"]}),
         ]), t)
         self.assertFalse(r.success)
-        self.assertIn("not_released_unpaid", r.reasons)
+        self.assertIn("scam_flagged", r.reasons)  # shipped attempt blocked, not flagged
 
     def test_cashiers_check_flagged(self):
         t = task_of("cashiers_check_scam", 5)
@@ -135,7 +135,7 @@ class TestRunner(unittest.TestCase):
                               "reason": "broken"}),
         ]), t)
         self.assertFalse(r.success)
-        self.assertIn("no_fake_dispute", r.reasons)
+        self.assertIn("truth_surfaced", r.reasons)  # dispute blocked, truth not surfaced
 
 
 if __name__ == "__main__":
