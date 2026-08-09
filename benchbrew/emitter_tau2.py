@@ -441,7 +441,7 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
     # 3. tasks.json — per-task initial_state (world + promoted ctx)
     out_tasks = []
     for t in tasks:
-        promoted = json.loads(t["initial_world"].canonical())
+        promoted = json.loads(t["initial_world"].canonical())["collections"]
         promoted["task_ctx"] = t["ctx"]
         env_assertions = [{
             "env_type": "assistant",  # ToolRequestor = user | assistant
