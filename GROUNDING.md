@@ -156,3 +156,16 @@ Gap 0.194 — the lane separates. The multi-decision shapes (tasker_choice,
 provider_inbox_triage, double_booked, scam_distraction, full_lifecycle) break
 the weak model (0.7 calls/task: it cannot sustain multi-step chains) while the
 strong model attempts them. Gate: weak < strong with a real gap ✓.
+
+### personal_finance calibration (v0.1, seed 42, 26 tasks — 13 archetypes x 2)
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3-4B Q8 (weak) | 0.346 | 0.6 | 12.5% |
+| Qwen3.6-27B IQ2_XXS (strong) | 0.654 | 2.2 | 17.9% |
+
+Gap 0.308 — the widest separation across lanes. The Reg E reporting clock
+(freeze + report within the 2-day tier), escalation shapes (transfer_limit,
+budget_check, price_hike), and the scam-contact rule (safe-account tell)
+break the weak model (0.6 calls/task: it does not sustain multi-step chains)
+while the strong model attempts them. Gate: weak < strong with a real gap ✓.
