@@ -76,6 +76,7 @@ class TestRunner(unittest.TestCase):
     def test_plan_itinerary_over_budget_fails(self):
         t = task_of("plan_itinerary", 5)
         ctx = t["ctx"]
+        t["initial_world"].get("trips")[ctx["trip_id"]]["budget"] = 500
         r = run_task(TRAVEL, ScriptedAgent([
             ("book_flight", {"option_id": "f3", "trip_id": ctx["trip_id"]}),
             ("book_flight", {"option_id": "f2", "trip_id": ctx["trip_id"]}),
