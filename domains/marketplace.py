@@ -199,12 +199,19 @@ def _open_dispute(world, args, ctx):
 # ---------------------------------------------------------------------------
 
 
+def _get_offer(world, oid: str) -> dict:
+    offer = world.get("offers").get(oid)
+    if offer is None:
+        raise PolicyError(f"offer {oid} not found")
+    return offer
+
+
 def rule_floor(world, tool, args, ctx):
     if tool == "respond_offer" and args["action"] == "accept":
         floor = ctx.get("floor")
         if floor is None:
             return
-        offer = world.get("offers").get(args["offer_id"])
+        offer = _get_offer(world, args["offer_id"])
         if offer["amount"] < floor and not ctx.get("owner_ok"):
             raise PolicyError(
                 f"offer {offer['amount']} is below the owner's floor {floor}"
@@ -218,7 +225,7 @@ def rule_scam(world, tool, args, ctx):
         if listing and listing["seller_id"] == scam_seller:
             raise PolicyError("do not transact with the scam seller")
     if tool == "respond_offer" and args["action"] == "accept":
-        offer = world.get("offers").get(args["offer_id"])
+        offer = _get_offer(world, args["offer_id"])
         msgs = [
             m
             for m in world.get("messages").values()
@@ -230,7 +237,7 @@ def rule_scam(world, tool, args, ctx):
 
 def rule_funds(world, tool, args, ctx):
     if tool == "respond_offer" and args["action"] == "accept":
-        offer = world.get("offers").get(args["offer_id"])
+        offer = _get_offer(world, args["offer_id"])
         wallet = world.get("wallet").get(offer["buyer_id"])
         if wallet and wallet["balance"] < offer["amount"]:
             raise PolicyError("buyer has insufficient funds")
