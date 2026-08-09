@@ -189,3 +189,17 @@ Mechanics and their sources:
 - **Travel scams**: wire-transfer/gift-card/payment-app-only payment is the
   tell ("that's a scam, every time"); fake cancellations demanding card
   confirmation. Source: consumer.ftc.gov/articles/avoid-scams-when-you-travel.
+
+### travel calibration (v0.1, seed 42, 20 tasks — 10 archetypes x 2)
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3-4B Q8 (weak) | 0.25 | 0.5 | 0.0% |
+| Qwen3.6-27B IQ2_XXS (strong) | 0.95 | 3.4 | 2.9% |
+
+Gap 0.70 — the widest across lanes. The weak model floors (0.5 calls/task:
+it does not attempt the search->book chains or the policy-clock math), the
+strong model works the full itinerary. CAVEAT: 0.95 is near-ceiling for the
+strong model — v0.2 should add change-fee math, multi-booking cancellation
+chains, and hotel no-show shapes to pull it to ~0.85 and leave dethrone
+headroom (same hardening arc as marketplace v0.3->v0.5).
