@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
@@ -190,7 +191,17 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
     calls, errors, termination = 0, 0, "agent_stop"
     fired: set[int] = set()
     for _ in range(max_steps):
-        msg = agent.respond(messages, tools)
+        try:
+            msg = agent.respond(messages, tools)
+        except HTTPError as e:
+            # the server rejected the model's (corrupt) tool arguments —
+            # count it as a server error, never crash the bundle
+            errors += 1
+            termination = "server_error"
+            messages.append(AgentMessage(
+                role="tool", tool_call_id="srv",
+                content=f"ERROR: server rejected request: {e.code} {e.reason}"))
+            break
         if not msg.tool_calls:
             messages.append(AgentMessage(role="assistant", content=msg.content))
             break
