@@ -20,6 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     seed = 42
     n_tasks = 12
     out_dir = "outputs"
+    emit_dir = ""
+    quiet = False
     i = 0
     while i < len(args):
         a = args[i]
@@ -29,6 +31,10 @@ def main(argv: list[str] | None = None) -> int:
             n_tasks = int(args[i + 1]); i += 2
         elif a == "--out":
             out_dir = args[i + 1]; i += 2
+        elif a == "--emit":
+            emit_dir = args[i + 1]; i += 2
+        elif a == "--quiet":
+            quiet = True; i += 1
         else:
             print(f"unknown arg: {a}"); return 2
 
@@ -54,6 +60,17 @@ def main(argv: list[str] | None = None) -> int:
 
     from benchbrew.emitter import emit
     out = emit(MARKETPLACE, seed, tasks, world, out_dir)
+
+    if emit_dir:
+        from benchbrew.emitter_tau2 import emit_tau2_domain
+        emit_tau2_domain(MARKETPLACE, seed, tasks, world, emit_dir)
+
+    if quiet:
+        # machine-readable provenance line for the arena runner
+        print(f"benchbrew domain={MARKETPLACE.name} version={MARKETPLACE.version} "
+              f"seed={seed} tasks={n_tasks} spec_sha256={MARKETPLACE.spec_hash()} "
+              f"bundle_sha256={h1}")
+        return 0
 
     print(f"domain:     {MARKETPLACE.name} v{MARKETPLACE.version}")
     print(f"spec hash:  {MARKETPLACE.spec_hash()}")

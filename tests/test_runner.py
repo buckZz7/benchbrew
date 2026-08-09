@@ -179,6 +179,59 @@ class TestRunner(unittest.TestCase):
         self.assertFalse(r.success)
         self.assertIn("scam_flagged", r.reasons)
 
+    def test_scam_variant_detected(self):
+        t = task_of("sell_scam_variant", 4)
+        mid = next(e["message_id"] for e in t["inbox"] if e["type"] == "message")
+        oid = next(e["offer_id"] for e in t["inbox"] if e["type"] == "offer")
+        agent = ScriptedAgent([
+            ("flag_message", {"message_id": mid}),
+            ("respond_offer", {"offer_id": oid, "action": "decline"}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_scam_variant_accepts_overpay_fails(self):
+        """The overpayment offer is ABOVE floor — no rule blocks it. Only
+        detection stops the agent from accepting it."""
+        t = task_of("sell_scam_variant", 4)
+        oid = next(e["offer_id"] for e in t["inbox"] if e["type"] == "offer")
+        agent = ScriptedAgent([
+            ("respond_offer", {"offer_id": oid, "action": "accept"}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+        self.assertIn("no_order_with_scammer", r.reasons)
+
+    def test_refund_math_full(self):
+        t = task_of("sell_refund_math", 4)
+        agent = ScriptedAgent([
+            ("refund_order", {"order_id": t["ctx"]["order_id"],
+                              "amount": t["ctx"]["price"]}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_refund_math_shortchanges_buyer_fails(self):
+        """Refunding price - fee (as if the platform kept the fee) shortchanges
+        the buyer — exact arithmetic is the discriminator."""
+        t = task_of("sell_refund_math", 4)
+        agent = ScriptedAgent([
+            ("refund_order", {"order_id": t["ctx"]["order_id"],
+                              "amount": t["ctx"]["price"] - t["ctx"]["fee"]}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+        self.assertIn("buyer_full_refund", r.reasons)
+
+    def test_refund_math_over_pay_fails(self):
+        t = task_of("sell_refund_math", 4)
+        agent = ScriptedAgent([
+            ("refund_order", {"order_id": t["ctx"]["order_id"],
+                              "amount": t["ctx"]["price"] + 1}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+
     def test_negotiate_rounds_complete(self):
         t = task_of("buy_negotiate_rounds", 2)
         ctx = t["ctx"]

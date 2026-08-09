@@ -146,7 +146,9 @@ def canonical_tasks(tasks: list[dict]) -> list[dict]:
     tests, so every hash is computed the same way."""
     out = []
     for t in tasks:
-        d = {k: v for k, v in t.items() if k not in ("goal", "initial_world")}
+        # drop callables (goal_desc lambdas stringify with memory addresses)
+        d = {k: v for k, v in t.items()
+             if k not in ("goal", "initial_world") and not callable(v)}
         d["goal"] = t["goal_desc"](t["ctx"])
         d["initial_world"] = t["initial_world"].canonical()
         out.append(d)

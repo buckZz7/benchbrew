@@ -59,6 +59,15 @@ def _assertion_for(t: dict) -> dict | None:
     if a == "sell_expiring_offer":
         return {"func_name": "assert_sell_expiring_offer_ok",
                 "arguments": {"buyer_id": ctx["buyer"], "floor": ctx["floor"]}}
+    if a == "sell_scam_variant":
+        return {"func_name": "assert_sell_scam_variant_ok",
+                "arguments": {"scammer": ctx["scammer"]}}
+    if a == "sell_refund_math":
+        return {"func_name": "assert_sell_refund_math_ok",
+                "arguments": {"order_id": ctx["order_id"], "buyer": ctx["buyer"],
+                              "price": ctx["price"], "fee": ctx["fee"],
+                              "buyer_before": ctx["buyer_before"],
+                              "seller_before": ctx["seller_before"]}}
     if a == "buy_late_dispute":
         return {"func_name": "assert_buy_late_dispute_ok", "arguments": {}}
     if a == "sell_ship_on_time":
@@ -148,6 +157,7 @@ class Order(BaseModel):
     label_id: Optional[str] = None
     created_at_tick: int = 0
     delivered_at_tick: Optional[int] = None
+    refunded_at_tick: Optional[int] = None
 
 
 class Dispute(BaseModel):
@@ -544,6 +554,41 @@ class MarketplaceTools(ToolKitBase):
         self._bump_tick()
         return {"request_id": rid}
 
+    @is_tool(ToolType.WRITE)
+    def refund_order(self, order_id: str, amount: int) -> dict:
+        """Refund a delivered order within the 30-day protection window.
+
+        A FULL refund (amount == order price) credits the final-value fee
+        back to the seller; partial refunds carry no fee credit.
+
+        Args:
+            order_id: the order id, such as 'ord0'.
+            amount: the refund amount (never more than the order price).
+
+        Returns:
+            The refunded order status and amount.
+        """
+        order = self.db.orders.get(order_id)
+        if order is None:
+            raise ValueError(f"order {order_id} not found")
+        if order.status != "delivered":
+            raise ValueError(f"order {order_id} is not delivered")
+        now = self._tick()
+        if now - order.delivered_at_tick > PLATFORM["protection_window"]:
+            raise ValueError("protection window closed (30 days after delivery)")
+        amount = int(amount)
+        if amount > order.price:
+            raise ValueError("refund cannot exceed the order price")
+        if order.buyer_id in self.db.wallet:
+            self.db.wallet[order.buyer_id].balance += amount
+        seller_credit = order.fee if amount == order.price else 0
+        if order.seller_id in self.db.wallet:
+            self.db.wallet[order.seller_id].balance -= amount - seller_credit
+        order.status = "refunded"
+        order.refunded_at_tick = now
+        self._bump_tick()
+        return {"status": "refunded", "refunded_amount": amount}
+
     # -- internals -----------------------------------------------------------
 
     def _create_order(self, listing: Listing, buyer_id: str, price: int) -> None:
@@ -651,6 +696,33 @@ class MarketplaceTools(ToolKitBase):
         return any(
             o.buyer_id == "me" and o.listing_id == listing_id and o.price <= budget
             for o in self.db.orders.values())
+
+    @is_tool(ToolType.READ)
+    def assert_sell_scam_variant_ok(self, scammer: str) -> bool:
+        """True if the overpayment scam was flagged and no order exists
+        with the scammer."""
+        no_order = not any(
+            o.seller_id == "me" and o.buyer_id == scammer
+            for o in self.db.orders.values())
+        flagged = any(
+            m.flagged and m.kind == "scam" and m.sender == scammer
+            for m in self.db.messages.values())
+        return no_order and flagged
+
+    @is_tool(ToolType.READ)
+    def assert_sell_refund_math_ok(self, order_id: str, buyer: str, price: int,
+                                   fee: int, buyer_before: int,
+                                   seller_before: int) -> bool:
+        """True if the order was fully refunded with exact money movement:
+        buyer back to full price, seller net of price minus the fee credit."""
+        order = self.db.orders.get(order_id)
+        if order is None or order.status != "refunded":
+            return False
+        b = self.db.wallet.get(buyer)
+        s = self.db.wallet.get("me")
+        buyer_ok = b is not None and b.balance == buyer_before + price
+        seller_ok = s is not None and s.balance == seller_before - price + fee
+        return buyer_ok and seller_ok
 '''
 
 # ---------------------------------------------------------------------------

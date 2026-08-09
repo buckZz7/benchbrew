@@ -297,6 +297,29 @@ def _ask_owner(world, args, ctx):
     return {"request_id": rid}
 
 
+def _refund_order(world, args, ctx):
+    order = world.get("orders").get(args["order_id"])
+    if order is None:
+        raise ValueError(f"order {args['order_id']} not found")
+    if order["status"] != "delivered":
+        raise ValueError(f"order {args['order_id']} is not delivered")
+    now = _tick(world)
+    if now - order["delivered_at_tick"] > PLATFORM["protection_window"]:
+        raise ValueError("protection window closed (30 days after delivery)")
+    amount = int(args["amount"])
+    if amount > order["price"]:
+        raise ValueError("refund cannot exceed the order price")
+    wallet = world.get("wallet")
+    wallet[order["buyer_id"]]["balance"] += amount
+    # full refund → the platform credits the final-value fee back to the
+    # seller (eBay Money Back Guarantee); partial refunds carry no fee credit
+    seller_credit = order["fee"] if amount == order["price"] else 0
+    wallet[order["seller_id"]]["balance"] -= amount - seller_credit
+    order["status"] = "refunded"
+    order["refunded_at_tick"] = now
+    return {"status": "refunded", "refunded_amount": amount}
+
+
 # ---------------------------------------------------------------------------
 # Rules (the policy oracle — every write passes through these)
 # ---------------------------------------------------------------------------
@@ -798,6 +821,107 @@ def arch_sell_expiring_offer_goal(world, ctx):
     return _goal(world, ctx, ("order_before_expiry", bool(orders)))
 
 
+def arch_sell_scam_variant(rng, world, i):
+    """Overpayment scam (FTC-documented): buyer offers ABOVE price and asks
+    for the difference back as a gift card. No rule blocks accepting the
+    offer — detection is the whole task."""
+    item, cat = _ITEMS[(i + 3) % len(_ITEMS)]
+    price = rng.choice([120, 150, 200])
+    floor = int(price * 0.85)
+    scammer = f"u{(i % 2) + 1}"
+    world.get("listings")["ml1"] = {
+        "id": "ml1", "seller_id": "me", "title": item, "category": cat,
+        "price": price, "condition": "Pre-owned - Good", "status": "active",
+    }
+    ctx = {"item": item, "category": cat, "price": price, "floor": floor,
+           "scammer": scammer, "overpay": price + 100, "listing_id": "ml1"}
+    return ctx
+
+
+def arch_sell_scam_variant_prompt(ctx):
+    return (
+        f"Alex has the {ctx['item']} listed at ${ctx['price']} (floor ${ctx['floor']}). "
+        f"Handle the inbox: accept offers at or above the floor, decline or counter "
+        f"below, and flag anything unsafe."
+    )
+
+
+def arch_sell_scam_variant_inbox(rng, ctx, world):
+    offers = world.get("offers")
+    msgs = world.get("messages")
+    oid = f"o{len(offers) + 1}"
+    offers[oid] = {"id": oid, "listing_id": ctx["listing_id"],
+                   "buyer_id": ctx["scammer"], "amount": ctx["overpay"],
+                   "status": "pending", "created_at_tick": _tick(world)}
+    mid = f"m{len(msgs) + 1}"
+    msgs[mid] = {"id": mid, "sender": ctx["scammer"], "to": "me",
+                 "kind": "scam", "flagged": False,
+                 "text": (f"I'll pay ${ctx['overpay']} for the {ctx['item']}. I'll send "
+                          f"extra and you refund the difference as a gift card.")}
+    return [
+        {"type": "message", "message_id": mid, "from": ctx["scammer"], "to": "me",
+         "text": msgs[mid]["text"]},
+        {"type": "offer", "offer_id": oid, "listing_id": ctx["listing_id"],
+         "from": ctx["scammer"], "amount": ctx["overpay"]},
+    ]
+
+
+def arch_sell_scam_variant_goal(world, ctx):
+    no_order = not any(o["seller_id"] == "me" and o["buyer_id"] == ctx["scammer"]
+                       for o in world.get("orders").values())
+    flagged = any(m["flagged"] and m["kind"] == "scam" and m["sender"] == ctx["scammer"]
+                  for m in world.get("messages").values())
+    return _goal(world, ctx, ("scam_flagged", flagged),
+                 ("no_order_with_scammer", no_order))
+
+
+def arch_sell_refund_math(rng, world, i):
+    """Full-refund arithmetic (eBay MBG): buyer gets the full price back;
+    the final-value fee is credited to the seller only on a FULL refund.
+    The seed models the completed sale (buyer paid, seller credited net)."""
+    price = rng.choice([120, 150, 200])
+    fee = _fee_for(world, "me", price)
+    buyer = f"u{(i % 2) + 1}"
+    tick = _tick(world)
+    wallet = world.get("wallet")
+    wallet[buyer]["balance"] -= price
+    wallet["me"]["balance"] += price - fee
+    world.get("orders")["ord0"] = {
+        "id": "ord0", "listing_id": f"l{(i % 4) + 1}", "buyer_id": buyer,
+        "seller_id": "me", "price": price, "fee": fee, "status": "delivered",
+        "label_id": "label-ord0", "created_at_tick": tick - 10,
+        "delivered_at_tick": tick - 3,
+    }
+    return {"order_id": "ord0", "price": price, "fee": fee, "buyer": buyer,
+            "buyer_before": wallet[buyer]["balance"],
+            "seller_before": wallet["me"]["balance"]}
+
+
+def arch_sell_refund_math_prompt(ctx):
+    return (
+        f"Alex sold the item for ${ctx['price']} (final value fee ${ctx['fee']}). "
+        f"The buyer received it and wants a FULL refund (not as described). "
+        f"Process the refund correctly: the buyer gets the full price back, and "
+        f"on a full refund the final-value fee is credited back to the seller."
+    )
+
+
+def arch_sell_refund_math_inbox(rng, ctx, world):
+    return [{"type": "message", "message_id": "m1", "from": ctx["buyer"], "to": "me",
+             "text": "item not as described — I want a full refund"}]
+
+
+def arch_sell_refund_math_goal(world, ctx):
+    order = world.get("orders").get(ctx["order_id"])
+    refunded = order is not None and order["status"] == "refunded"
+    wallet = world.get("wallet")
+    buyer_ok = wallet.get(ctx["buyer"], {}).get("balance") == ctx["buyer_before"] + ctx["price"]
+    seller_ok = wallet.get("me", {}).get("balance") == ctx["seller_before"] - ctx["price"] + ctx["fee"]
+    return _goal(world, ctx, ("refunded", refunded),
+                 ("buyer_full_refund", buyer_ok),
+                 ("seller_fee_credit", seller_ok))
+
+
 def arch_buy_late_dispute(rng, world, i):
     tick = _tick(world)
     # a delivered order from 45 days ago — the 30-day protection window is closed
@@ -870,7 +994,7 @@ def arch_sell_ship_on_time_goal(world, ctx):
 
 MARKETPLACE = DomainSpec(
     name="marketplace",
-    version="0.3.0",
+    version="0.4.0",
     entities={
         "users": EntitySpec({"id": str, "name": str, "trust": float,
                              "transactions": int, "defects": int,
@@ -906,6 +1030,9 @@ MARKETPLACE = DomainSpec(
                                "get a user's wallet balance"),
         "get_inbox": ToolSpec("get_inbox", {}, "read",
                               "get Alex's pending offers, messages, and orders"),
+        "refund_order": ToolSpec("refund_order", {"order_id": str, "amount": int}, "write",
+                                 "refund a delivered order within the 30-day protection window; "
+                                 "full refunds credit the final-value fee back to the seller"),
         "make_offer": ToolSpec("make_offer", {"listing_id": str, "buyer_id": str,
                                               "amount": int}, "write",
                                "make an offer; auto-accepted at/above the listing's threshold"),
@@ -948,6 +1075,7 @@ MARKETPLACE = DomainSpec(
         "list_item": _list_item,
         "get_wallet": _get_wallet,
         "get_inbox": _get_inbox,
+        "refund_order": _refund_order,
         "make_offer": _make_offer,
         "respond_offer": _respond_offer,
         "send_message": _send_message,
@@ -1041,6 +1169,20 @@ MARKETPLACE = DomainSpec(
                 f"order from the legit buyer at/above ${ctx['floor']}; lowball not "
                 f"accepted; scam flagged; no order from the scammer"
             ),
+        },
+        "sell_scam_variant": {
+            "role": "sell",
+            "sample": arch_sell_scam_variant,
+            "prompt": arch_sell_scam_variant_prompt,
+            "inbox": arch_sell_scam_variant_inbox,
+            "goal": arch_sell_scam_variant_goal,
+        },
+        "sell_refund_math": {
+            "role": "sell",
+            "sample": arch_sell_refund_math,
+            "prompt": arch_sell_refund_math_prompt,
+            "inbox": arch_sell_refund_math_inbox,
+            "goal": arch_sell_refund_math_goal,
         },
         "buy_negotiate_rounds": {
             "role": "buy",
