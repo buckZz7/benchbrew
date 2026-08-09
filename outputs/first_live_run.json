@@ -1,0 +1,158 @@
+{
+  "n_tasks": 12,
+  "success_rate": 0.0,
+  "n_success": 0,
+  "tool_calls_per_task": 1.2,
+  "tool_error_rate": 0.6,
+  "terminations": {
+    "agent_stop": 12
+  },
+  "per_task": [
+    {
+      "id": "0",
+      "archetype": "buy_avoid_scam",
+      "success": false,
+      "reasons": [
+        "scam_flagged"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.01
+    },
+    {
+      "id": "1",
+      "archetype": "buy_negotiate",
+      "success": false,
+      "reasons": [
+        "order_within_budget"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.58
+    },
+    {
+      "id": "2",
+      "archetype": "sell_create_listing",
+      "success": false,
+      "reasons": [
+        "listing_created_correctly"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.16
+    },
+    {
+      "id": "3",
+      "archetype": "sell_list_close",
+      "success": false,
+      "reasons": [
+        "order_at_or_above_floor",
+        "scam_flagged"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.29
+    },
+    {
+      "id": "4",
+      "archetype": "sell_reject_lowball",
+      "success": false,
+      "reasons": [
+        "lowball_not_accepted"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 0.97
+    },
+    {
+      "id": "5",
+      "archetype": "buy_avoid_scam",
+      "success": false,
+      "reasons": [
+        "scam_flagged"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 0.96
+    },
+    {
+      "id": "6",
+      "archetype": "buy_negotiate",
+      "success": false,
+      "reasons": [
+        "order_within_budget"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.02
+    },
+    {
+      "id": "7",
+      "archetype": "sell_create_listing",
+      "success": false,
+      "reasons": [
+        "listing_created_correctly"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.16
+    },
+    {
+      "id": "8",
+      "archetype": "sell_list_close",
+      "success": false,
+      "reasons": [
+        "order_at_or_above_floor",
+        "scam_flagged"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 2,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.36
+    },
+    {
+      "id": "9",
+      "archetype": "sell_reject_lowball",
+      "success": false,
+      "reasons": [
+        "lowball_not_accepted"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 0.99
+    },
+    {
+      "id": "10",
+      "archetype": "buy_avoid_scam",
+      "success": false,
+      "reasons": [
+        "scam_flagged"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 0.97
+    },
+    {
+      "id": "11",
+      "archetype": "buy_negotiate",
+      "success": false,
+      "reasons": [
+        "order_within_budget"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 0.99
+    }
+  ]
+}
