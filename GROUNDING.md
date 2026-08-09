@@ -23,6 +23,49 @@ source.
 | Seller performance (NOT yet in spec — proposed edge) | eBay seller levels: **Top Rated** = defect rate ≤ 0.5%, late shipment ≤ 3%, 100+ transactions; **Above Standard** = defect ≤ 2%, late shipment ≤ 7%; **Below Standard** = above those. Defects = cases closed without seller resolution + out-of-stock cancellations. Top Rated = lower fees | super-ds.com/blog/ebay-seller-levels-top-rated-guide; export.ebay.com/en/growth/seller-performance/seller-levels |
 | Shipping label mechanics | Platform-generated prepaid labels (Poshmark flat $7.67–7.97, buyer pays); label = platform's own shipping contract (grounds why "own courier" is abnormal) | voolist Poshmark fees guide; Poshmark shipping help |
 
+## Platform spectrum: one world family, different knob settings
+
+The second-hand marketplace family spans a **mediation axis** — from "no
+platform at all" (Craigslist) to "platform is the escrow" (Mercado
+Libre/MercadoPago). Every platform is the same entity/tool/rules family at
+different settings of: fee structure, buyer-protection window, fulfillment
+(local vs shipped), condition structure, negotiation shape, seller levels.
+
+| Platform | Seller fee | Buyer protection | Fulfillment | Notes | Source |
+|---|---|---|---|---|---|
+| Craigslist | 0 | **none** | local, cash | anonymous relay; scam surface maximal (Western Union, fake cashier's checks) | craigslist.org |
+| Facebook Marketplace (local) | 0 | **none** for cash/meetup | local pickup | free; "never pay upfront to hold or for delivery fees"; check account age | facebook.com/policies/purchase_protection; FB Help |
+| Facebook Marketplace (shipped) | 0 | Purchase Protection, **max $500** covered | shipping | protection only on shipped checkout; claim → full refund + shipping | facebook.com/policies/purchase_protection |
+| OfferUp (local) | 0 | none (local) | local pickup | local = free | marketplacefee.com/offerup-fees |
+| OfferUp (shipped) | **12.9%, min $1.99** | claim if not as described | shipping | buyer service fee at checkout | marketplacefee.com/offerup-fees; cluzy.app |
+| Depop | **10%** + 3.3% + $0.45 processing | platform payments; dispute process | shipping (label optional) / local | fee on sale price incl. shipping if no label | depophelp.zendesk.com (Seller fees); nifty.ai |
+| Mercari | 10% | Buyer Protection fee **3.6%** (buyer pays); **72h after delivery to report**; return ships back within 3 days | shipping / local | protection window is the shortest of the big platforms | mercari.com/us/help_center/article/235, /169 |
+| Vinted | **0** (sellers) | mandatory Buyer Protection fee (buyer pays); **~48h seller response** to issue reports | shipping | bundle offers; seller-paid-fee model is the outlier | vinted.com/help/3/550-buyer-protection |
+| Poshmark (2026) | 5.99% + tiered $1–3 | 5.99% buyer protection fee | shipping (flat label ~$7.97) | restructured mid-2025 | voolist.com; modernretail.co |
+| eBay | **13.25% + $0.30** | MBG: 30 days after delivery (not-as-described); courier pickup NOT covered | shipping / local | seller levels (Top Rated ≤0.5% defect) | ebay.com sellercenter; super-ds.com |
+| Mercado Libre (LatAm) | ~13% + processing | **escrow via MercadoPago** (funds held until delivery confirmed) | shipping | the escrow end of the spectrum | (to source) |
+
+### What the spectrum means for the spec
+
+1. **Mediation level is a first-class knob.** At low mediation
+   (Craigslist/FB local) the platform provides no protection and the agent
+   IS the safety net — scam screening, meetup logistics, payment
+   verification. At high mediation (eBay/Poshmark) the agent navigates
+   platform policy — windows, fees, dispute process. Different skills,
+   same world family.
+2. **The phone-agent story skews LOW-mediation.** Facebook Marketplace is
+   where ordinary people buy/sell on their phones, and it has the weakest
+   platform safety net — so a local agent adds the most value there (and
+   the eval has the most to measure). The current spec is eBay/Poshmark-
+   shaped (high mediation); a low-mediation variant (FB/Craigslist-shaped:
+   free-form messaging, meetup, cash, no protection) is the natural second
+   variant — the phone story made concrete.
+3. **Protection windows vary by platform** (Mercari 72h, Vinted ~48h
+   response, eBay 30d, FB shipped ≤$500). The dispute-window rule is a
+   per-platform config, not a fixed constant — another knob.
+4. **Fees span 0% → 13.25%+** (Vinted/OfferUp-local/FB-local at zero;
+   eBay highest). The fee rule is a per-platform config.
+
 ## Policy snapshot principle
 
 Marketplace policies CHANGE (Poshmark restructured fees in 2025 — sellers
