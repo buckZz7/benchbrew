@@ -138,6 +138,7 @@ class TaskResult:
     tool_errors: int = 0
     termination: str = "agent_stop"
     wall_clock_s: float = 0.0
+    world: World | None = None
 
 
 def run_bundle(spec: DomainSpec, agent: BaseAgent, seed: int = 42,
@@ -164,6 +165,15 @@ def _render_event(e: dict, users: dict) -> str:
                 f"from {uname(e['from'])}: ${e['amount']}"
                 + (f" (expires in {e['expires_in_hours']}h)"
                    if e.get("expires_in_hours") else ""))
+    if e["type"] == "booking":
+        return (f"Booking {e['booking_id']} ({e.get('service', '?')} with "
+                f"{uname(e.get('tasker', ''))}, {e.get('hours', '?')}h @ "
+                f"${e.get('hourly_rate', '?')}/h, total ${e.get('total', '?')}, "
+                f"scheduled in {e.get('scheduled_in_hours', '?')}h, "
+                f"status {e.get('status', '?')})")
+    if e["type"] == "invoice":
+        return (f"Invoice {e['invoice_id']} for booking {e['booking_id']}: "
+                f"${e['amount']} ({e.get('status', '?')})")
     return f"Message {e['message_id']} from {uname(e['from'])}: \"{e['text']}\""
 
 
@@ -248,6 +258,7 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
         task_id=task["id"], archetype=task["archetype"], success=ok,
         reasons=reasons, tool_calls=calls, tool_errors=errors,
         termination=termination, wall_clock_s=round(time.time() - start, 2),
+        world=world,
     )
 
 

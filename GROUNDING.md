@@ -106,3 +106,41 @@ Before the marketplace lane is defended in Pilsner: one practitioner
 (active resale-platform user or marketplace operator) reviews a sample
 bundle — the human-validation pass SWE-bench did with Verified. The
 bundle's task set must read as "yes, this is what resale looks like."
+
+## Domain 2: local services (TaskRabbit family) — snapshot 2026-08
+
+Mechanics and their sources (the benchbrew-domain-authoring gate: every rule
+traces to a real policy):
+
+1. **Service fee**: clients pay a service fee computed as a percentage of the
+   tasker's hourly rate, applied per hour worked; taskers receive 100% of
+   their set rate. Source: TaskRabbit Support "What's the Taskrabbit Service
+   Fee?" (support.taskrabbit.com/hc/en-us/articles/46260411872155) — the
+   article confirms "calculated as a percentage of the hourly rate"; the
+   commonly-reported rate is ~15% (TaskRabbit "How Pricing Works" blog:
+   "you'll always get 100% of the hourly rate you set"). Sim: 15%.
+2. **Cancellation window**: clients may cancel anytime, but pay a
+   cancellation fee if the task is canceled within 24 hours of the scheduled
+   start time, or the client is a no-show. NO fee if: the tasker did not show
+   up, or the task was canceled within 5 minutes of booking. The fee equals
+   1 hour at the tasker's hourly rate plus platform fees. Source: TaskRabbit
+   Support "Cancellation Policy" (46260411471899, eff. 2025-05-07) and
+   "No Show Cancellation Policy" (46260490243227, eff. 2024-09-24).
+3. **Escrow / payment release**: the client's card is charged for the task;
+   the tasker is paid only after the client confirms completion — payment is
+   released within 24h of the tasker submitting the invoice, contingent on
+   the client's confirmation. Source: TaskRabbit Support "How Do I Pay My
+   Tasker?" (46260427597595) + "How Pricing Works" blog (step 3: "You
+   complete the task — and confirm when it's done"). Sim: wallet holds the
+   total at booking; confirm_completion releases it to the tasker.
+4. **No-show asymmetry**: a tasker who fails to show up forfeits compensation
+   and the client owes no cancellation fee (policy carve-out above). A client
+   who is unavailable at the start time owes the 1-hour fee.
+5. **Off-platform payment = policy violation**: requesting payment outside the
+   platform (direct transfer, gift cards) is the services-flavored scam
+   pattern — same FTC-documented off-platform payment pressure as
+   marketplace scams. Source: TaskRabbit Global Terms of Service (platform
+   holds funds; direct payments bypass protection) + FTC consumer fraud
+   guidance on off-platform payment requests.
+
+## Review gate (marketplace lane, pending)
