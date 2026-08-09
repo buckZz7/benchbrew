@@ -144,3 +144,15 @@ traces to a real policy):
    guidance on off-platform payment requests.
 
 ## Review gate (marketplace lane, pending)
+
+### local_services calibration (v0.2, seed 42, 36 tasks — 18 archetypes × 2)
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3-4B Q8 (weak) | 0.528 | 0.7 | 7.7% |
+| Qwen3.6-27B IQ2_XXS (strong) | 0.722 | 1.9 | 21.7% |
+
+Gap 0.194 — the lane separates. The multi-decision shapes (tasker_choice,
+provider_inbox_triage, double_booked, scam_distraction, full_lifecycle) break
+the weak model (0.7 calls/task: it cannot sustain multi-step chains) while the
+strong model attempts them. Gate: weak < strong with a real gap ✓.
