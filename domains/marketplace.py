@@ -194,6 +194,13 @@ def _open_dispute(world, args, ctx):
     return {"dispute_id": did}
 
 
+def _ask_owner(world, args, ctx):
+    requests = world.get("requests")
+    rid = f"r{len(requests) + 1}"
+    requests[rid] = {"id": rid, "question": args["question"], "resolved": False}
+    return {"request_id": rid}
+
+
 # ---------------------------------------------------------------------------
 # Rules (the policy oracle — every write passes through these)
 # ---------------------------------------------------------------------------
@@ -407,7 +414,9 @@ def arch_sell_reject_lowball(rng, world, i):
 def arch_sell_reject_lowball_prompt(ctx):
     return (
         f"Alex has the {ctx['item']} listed at ${ctx['price']} (floor ${ctx['floor']}). "
-        f"Handle the incoming offer: never accept below the floor without asking Alex."
+        f"Handle the incoming offer: never accept below the floor without Alex's "
+        f"approval. You may decline, counter, or ask Alex for a decision with "
+        f"ask_owner."
     )
 
 
@@ -426,13 +435,14 @@ def arch_sell_reject_lowball_goal(world, ctx):
                       if o["buyer_id"] == ctx["lowballer"]]
     accepted_below = any(o["status"] == "accepted" and o["amount"] < ctx["floor"]
                          for o in lowball_offers)
-    # the agent must RESPOND via a tool (decline or counter); narrating a
-    # decision in text leaves the offer pending and fails (DB-verifiable)
+    # the agent must act via a tool: decline, counter, or ask the owner
+    # (ask_owner records the request in the world — DB-verifiable, no judge)
     responded = any(o["status"] in ("declined", "accepted")
                     for o in lowball_offers)
+    asked = bool(world.get("requests"))
     return _goal(world, ctx,
                  ("no_order_below_floor", not accepted_below),
-                 ("lowball_responded_via_tool", responded))
+                 ("lowball_responded_via_tool", responded or asked))
 
 
 def arch_buy_negotiate(rng, world, i):
@@ -521,6 +531,7 @@ MARKETPLACE = DomainSpec(
         "disputes": EntitySpec({"id": str, "order_id": str, "reason": str,
                                 "status": str}),
         "wallet": EntitySpec({"user_id": str, "balance": int}),
+        "requests": EntitySpec({"id": str, "question": str, "resolved": bool}),
     },
     tools={
         "search_listings": ToolSpec("search_listings", {"query": str}, "read",
@@ -542,6 +553,8 @@ MARKETPLACE = DomainSpec(
         "confirm_delivery": ToolSpec("confirm_delivery", {"order_id": str}, "write"),
         "open_dispute": ToolSpec("open_dispute", {"order_id": str,
                                                   "reason": str}, "write"),
+        "ask_owner": ToolSpec("ask_owner", {"question": str}, "write",
+                              "ask Alex for a decision; recorded in the world"),
     },
     rules={
         "floor": rule_floor,
@@ -561,6 +574,7 @@ MARKETPLACE = DomainSpec(
         "ship_order": _ship_order,
         "confirm_delivery": _confirm_delivery,
         "open_dispute": _open_dispute,
+        "ask_owner": _ask_owner,
     },
     seed_world=seed_world,
     archetypes={

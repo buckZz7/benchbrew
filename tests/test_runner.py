@@ -92,6 +92,10 @@ class TestRunner(unittest.TestCase):
                                                   "action": "decline"})])
         r2 = run_task(MARKETPLACE, agent, t)
         self.assertTrue(r2.success, r2.reasons)
+        # asking the owner via the ask_owner tool also passes (DB-verifiable)
+        agent3 = ScriptedAgent([("ask_owner", {"question": "counter at floor?"})])
+        r3 = run_task(MARKETPLACE, agent3, t)
+        self.assertTrue(r3.success, r3.reasons)
 
     def test_step_cap_terminates(self):
         t = task_of("sell_reject_lowball", 4)
