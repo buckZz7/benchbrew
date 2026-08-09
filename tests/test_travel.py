@@ -183,6 +183,78 @@ class TestRunner(unittest.TestCase):
         self.assertFalse(r.success)
         self.assertIn("scam_flagged", r.reasons)
 
+    # ---- v0.2 hardening shapes ----
+
+    def test_change_flight_fee_surfaces_cost(self):
+        t = task_of("change_flight_fee", 5)
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("ask_owner", {"question": "change forfeits the $280 fare"}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_change_flight_fee_silent_change_fails(self):
+        t = task_of("change_flight_fee", 5)
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("change_flight", {"booking_id": t["ctx"]["booking_id"],
+                               "new_option_id": t["ctx"]["new_option"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("not_silently_changed", r.reasons)
+
+    def test_multi_cancel_chain_both(self):
+        t = task_of("multi_cancel_chain", 5)
+        ctx = t["ctx"]
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("cancel_booking", {"booking_id": ctx["flight"]}),
+            ("cancel_booking", {"booking_id": ctx["hotel"]}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_multi_cancel_chain_one_only_fails(self):
+        t = task_of("multi_cancel_chain", 5)
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("cancel_booking", {"booking_id": t["ctx"]["flight"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("both_canceled", r.reasons)
+
+    def test_car_choice_cancel_right(self):
+        t = task_of("car_choice_cancel", 5)
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("cancel_booking", {"booking_id": t["ctx"]["cancel"]}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_car_choice_cancel_wrong_fails(self):
+        t = task_of("car_choice_cancel", 5)
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("cancel_booking", {"booking_id": t["ctx"]["keep"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("right_car_canceled", r.reasons)
+
+    def test_disruption_rechain(self):
+        t = task_of("disruption_rechain", 5)
+        ctx = t["ctx"]
+        car = next(b for b in t["initial_world"].get("bookings").values()
+                   if b["kind"] == "car")
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("book_flight", {"option_id": "f2", "trip_id": ctx["trip_id"]}),
+            ("reschedule_car", {"booking_id": car["id"],
+                                "new_pickup_tick": 246,
+                                "new_dropoff_tick": 292}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_disruption_rechain_no_car_move_fails(self):
+        t = task_of("disruption_rechain", 5)
+        ctx = t["ctx"]
+        r = run_task(TRAVEL, ScriptedAgent([
+            ("book_flight", {"option_id": "f2", "trip_id": ctx["trip_id"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("car_moved_after_arrival", r.reasons)
+
 
 if __name__ == "__main__":
     unittest.main()
