@@ -175,6 +175,7 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
         known = "\n".join(
             f"- Offer {e['offer_id']} on listing {e['listing_id']} "
             f"from {uname(e['from'])}: ${e['amount']}"
+            + (f" (expires in {e['expires_in_hours']}h)" if e.get("expires_in_hours") else "")
             if e["type"] == "offer" else
             f"- Message {e['message_id']} from {uname(e['from'])}: \"{e['text']}\""
             for e in task["inbox"]
@@ -205,6 +206,9 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
                 text = f"ERROR: {e}"
             messages.append(AgentMessage(role="tool", tool_call_id=tc.get("id"),
                                          content=text))
+            # world time advances: 1 tick (hour) per tool call — offers expire,
+            # handling windows close, protection windows elapse
+            world.tick += 1
         if errors >= 3:
             termination = "too_many_errors"
             break

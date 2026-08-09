@@ -106,6 +106,50 @@ class TestRunner(unittest.TestCase):
         self.assertEqual(r.termination, "max_steps")
         self.assertEqual(r.tool_calls, 5)
 
+    def test_expiring_offer_accept_now(self):
+        t = task_of("sell_expiring_offer", 1)
+        offer = next(e for e in t["inbox"] if e["type"] == "offer")
+        # act immediately -> passes before the 24h window closes
+        agent = ScriptedAgent([("respond_offer", {"offer_id": offer["offer_id"],
+                                                  "action": "accept"})])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_expiring_offer_dawdle_fails(self):
+        t = task_of("sell_expiring_offer", 3)
+        offer = next(e for e in t["inbox"] if e["type"] == "offer")
+        # waste 3 steps first -> offer expired by the time we accept
+        agent = ScriptedAgent([("get_listing", {"listing_id": "ml1"}),
+                               ("get_wallet", {"user_id": "me"}),
+                               ("get_listing", {"listing_id": "ml1"}),
+                               ("respond_offer", {"offer_id": offer["offer_id"],
+                                                  "action": "accept"})])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+        self.assertGreater(r.tool_errors, 0)
+
+    def test_late_dispute_no_op_passes(self):
+        t = task_of("buy_late_dispute", 5)
+        r = run_task(MARKETPLACE, ScriptedAgent([]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_ship_on_time_both_immediately(self):
+        t = task_of("sell_ship_on_time", 2)
+        agent = ScriptedAgent([("ship_order", {"order_id": "ord1"}),
+                               ("ship_order", {"order_id": "ord2"})])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_ship_on_time_dawdle_loses_rating(self):
+        t = task_of("sell_ship_on_time", 4)
+        # a read before shipping pushes the second order past the window
+        agent = ScriptedAgent([("get_wallet", {"user_id": "me"}),
+                               ("ship_order", {"order_id": "ord1"}),
+                               ("ship_order", {"order_id": "ord2"})])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+        self.assertIn("top_rated_kept", r.reasons)
+
     def test_tool_schema_shape(self):
         schema = {s["function"]["name"]: s for s in tool_schema(MARKETPLACE)}
         self.assertIn("respond_offer", schema)

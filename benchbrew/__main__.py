@@ -35,6 +35,14 @@ def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(REPO))
     from domains.marketplace import MARKETPLACE
 
+    from benchbrew.spec import validate_spec
+    problems = validate_spec(MARKETPLACE)
+    if problems:
+        print("SPEC INVALID — refusing to emit:")
+        for p in problems:
+            print(f"  - {p}")
+        return 3
+
     gen = Generator(MARKETPLACE)
     world, tasks = gen.generate(seed, n_tasks)
     h1 = bundle_hash(MARKETPLACE, seed, _stripped(tasks))

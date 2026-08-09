@@ -8,9 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from benchbrew.generator import Generator
 from benchbrew.simulator import Simulator
-from benchbrew.spec import PolicyError, World, bundle_hash
+from benchbrew.spec import PolicyError, World, bundle_hash, validate_spec
 from benchbrew.verifier import check
-from domains.marketplace import MARKETPLACE
+from domains.marketplace import MARKETPLACE, PLATFORM, _fee_for, _seller_level
 
 
 def stripped(tasks):
@@ -51,6 +51,32 @@ class TestPolicy(unittest.TestCase):
             if t["archetype"] == archetype:
                 return t["initial_world"], t
         self.fail(f"no {archetype} task generated")
+
+    def test_spec_validates(self):
+        self.assertEqual(validate_spec(MARKETPLACE), [])
+
+    def test_grounded_fees(self):
+        w, _ = self.gen.generate(1, 1)
+        # eBay 13.25% + $0.30; Alex is Top Rated -> 30% fee discount
+        self.assertEqual(_fee_for(w, "me", 100), round(round(100 * 0.1325 + 0.30) * 0.7))
+        self.assertEqual(_fee_for(w, "u3", 100), round(100 * 0.1325 + 0.30))
+        self.assertLess(_fee_for(w, "me", 100), _fee_for(w, "u3", 100))
+        self.assertEqual(_seller_level(w, "me"), "top_rated")
+
+    def test_offer_expiry_blocks_late_response(self):
+        w, t = self.task_of("sell_list_close")
+        offer = next(v for v in t["inbox"] if v["type"] == "offer")
+        # 25 hours old -> expired (24h window)
+        w.get("offers")[offer["offer_id"]]["created_at_tick"] = -25
+        with self.assertRaises(PolicyError):
+            self.sim.execute(w, "respond_offer",
+                             {"offer_id": offer["offer_id"], "action": "accept"}, t["ctx"])
+
+    def test_dispute_window_closed(self):
+        w, t = self.task_of("buy_late_dispute")
+        with self.assertRaises(PolicyError):
+            self.sim.execute(w, "open_dispute",
+                             {"order_id": "ord0", "reason": "not as described"}, t["ctx"])
 
     def test_floor_blocks_below_floor_accept(self):
         w, t = self.task_of("sell_list_close")
