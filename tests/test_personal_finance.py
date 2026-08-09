@@ -36,7 +36,7 @@ class TestPolicy(unittest.TestCase):
 
     def test_dispute_after_60_days_blocked(self):
         """Reg E: unauthorized transfers must be reported within 60 days."""
-        from domains.banking import _seed_txn, _tick
+        from domains.personal_finance import _seed_txn, _tick
         t = task_of("dispute_within_window", 5)
         w = t["initial_world"].clone()
         old = _seed_txn(w, -100, "OLD CHARGE", "unknown", 70)
