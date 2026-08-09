@@ -10,9 +10,20 @@ import sys
 from pathlib import Path
 
 from benchbrew.generator import Generator
-from benchbrew.spec import bundle_hash
+from benchbrew.spec import DomainSpec, bundle_hash
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def _load_spec(name: str):
+    """Import a domain spec by name: domains/<name>.py -> the DomainSpec
+    instance (the module's one DomainSpec value)."""
+    import importlib
+    mod = importlib.import_module(f"domains.{name}")
+    for val in vars(mod).values():
+        if isinstance(val, DomainSpec):
+            return val
+    raise SystemExit(f"domain {name}: no DomainSpec found in domains/{name}.py")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = "outputs"
     emit_dir = ""
     quiet = False
+    domain = "marketplace"
     i = 0
     while i < len(args):
         a = args[i]
@@ -33,42 +45,44 @@ def main(argv: list[str] | None = None) -> int:
             out_dir = args[i + 1]; i += 2
         elif a == "--emit":
             emit_dir = args[i + 1]; i += 2
+        elif a == "--domain":
+            domain = args[i + 1]; i += 2
         elif a == "--quiet":
             quiet = True; i += 1
         else:
             print(f"unknown arg: {a}"); return 2
 
     sys.path.insert(0, str(REPO))
-    from domains.marketplace import MARKETPLACE
+    SPEC = _load_spec(domain)
 
     from benchbrew.spec import validate_spec
-    problems = validate_spec(MARKETPLACE)
+    problems = validate_spec(SPEC)
     if problems:
         print("SPEC INVALID — refusing to emit:")
         for p in problems:
             print(f"  - {p}")
         return 3
 
-    gen = Generator(MARKETPLACE)
+    gen = Generator(SPEC)
     world, tasks = gen.generate(seed, n_tasks)
-    h1 = bundle_hash(MARKETPLACE, seed, _stripped(tasks))
+    h1 = bundle_hash(SPEC, seed, _stripped(tasks))
 
     # determinism check: regenerate and compare hashes
     _, tasks2 = gen.generate(seed, n_tasks)
-    h2 = bundle_hash(MARKETPLACE, seed, _stripped(tasks2))
+    h2 = bundle_hash(SPEC, seed, _stripped(tasks2))
     det = "DETERMINISTIC" if h1 == h2 else "NON-DETERMINISTIC (BUG)"
 
     from benchbrew.emitter import emit
-    out = emit(MARKETPLACE, seed, tasks, world, out_dir)
+    out = emit(SPEC, seed, tasks, world, out_dir)
 
     if emit_dir:
         from benchbrew.emitter_tau2 import emit_tau2_domain
-        emit_tau2_domain(MARKETPLACE, seed, tasks, world, emit_dir)
+        emit_tau2_domain(SPEC, seed, tasks, world, emit_dir)
 
     if quiet:
         # machine-readable provenance line for the arena runner
-        print(f"benchbrew domain={MARKETPLACE.name} version={MARKETPLACE.version} "
-              f"seed={seed} tasks={n_tasks} spec_sha256={MARKETPLACE.spec_hash()} "
+        print(f"benchbrew domain={SPEC.name} version={SPEC.version} "
+              f"seed={seed} tasks={n_tasks} spec_sha256={SPEC.spec_hash()} "
               f"bundle_sha256={h1}")
         return 0
 
