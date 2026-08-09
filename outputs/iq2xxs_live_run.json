@@ -1,0 +1,157 @@
+{
+  "n_tasks": 12,
+  "success_rate": 1.0,
+  "n_success": 12,
+  "tool_calls_per_task": 2.2,
+  "tool_error_rate": 0.185,
+  "terminations": {
+    "agent_stop": 11,
+    "too_many_errors": 1
+  },
+  "per_task": [
+    {
+      "id": "0",
+      "archetype": "buy_avoid_scam",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.06
+    },
+    {
+      "id": "1",
+      "archetype": "buy_negotiate",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.84
+    },
+    {
+      "id": "2",
+      "archetype": "sell_create_listing",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.84
+    },
+    {
+      "id": "3",
+      "archetype": "sell_list_close",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 6.14
+    },
+    {
+      "id": "4",
+      "archetype": "sell_reject_lowball",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.85
+    },
+    {
+      "id": "5",
+      "archetype": "buy_avoid_scam",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.8
+    },
+    {
+      "id": "6",
+      "archetype": "buy_negotiate",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 5,
+      "tool_errors": 2,
+      "termination": "agent_stop",
+      "wall_clock_s": 7.81
+    },
+    {
+      "id": "7",
+      "archetype": "sell_create_listing",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 3.56
+    },
+    {
+      "id": "8",
+      "archetype": "sell_list_close",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 3.27
+    },
+    {
+      "id": "9",
+      "archetype": "sell_reject_lowball",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.7
+    },
+    {
+      "id": "10",
+      "archetype": "buy_avoid_scam",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.77
+    },
+    {
+      "id": "11",
+      "archetype": "buy_negotiate",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 6,
+      "tool_errors": 3,
+      "termination": "too_many_errors",
+      "wall_clock_s": 9.39
+    }
+  ]
+}
