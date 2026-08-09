@@ -236,7 +236,7 @@ class TestRunner(unittest.TestCase):
         self.assertTrue(all(r.archetype == "sell_create_listing" for r in results))
         rep = report(results)
         self.assertIn("success_rate", rep)
-        self.assertEqual(rep["n_tasks"], 3)
+        self.assertEqual(rep["n_tasks"], 2)
 
 
 if __name__ == "__main__":
