@@ -33,7 +33,10 @@ def _search_listings(world, args, ctx):
 
 
 def _get_listing(world, args, ctx):
-    return world.get("listings").get(args["listing_id"])
+    listing = world.get("listings").get(args["listing_id"])
+    if listing is None:
+        raise ValueError(f"listing {args['listing_id']} not found")
+    return listing
 
 
 def _list_item(world, args, ctx):
@@ -53,10 +56,16 @@ def _list_item(world, args, ctx):
 
 
 def _get_wallet(world, args, ctx):
-    return world.get("wallet").get(args["user_id"])
+    wallet = world.get("wallet").get(args["user_id"])
+    if wallet is None:
+        raise ValueError(f"user {args['user_id']} not found")
+    return wallet
 
 
 def _make_offer(world, args, ctx):
+    listing = world.get("listings").get(args["listing_id"])
+    if listing is None:
+        raise ValueError(f"listing {args['listing_id']} not found")
     offers = world.get("offers")
     oid = f"o{len(offers) + 1}"
     rec = {
@@ -72,7 +81,6 @@ def _make_offer(world, args, ctx):
     accept_at = ctx.get("accept_at")
     if accept_at is not None and args["amount"] >= accept_at:
         rec["status"] = "accepted"
-        listing = world.get("listings").get(args["listing_id"])
         _create_order(world, listing, args["buyer_id"], args["amount"], ctx)
     return rec
 
@@ -102,6 +110,8 @@ def _create_order(world, listing, buyer_id, price, ctx):
 
 def _respond_offer(world, args, ctx):
     offer = world.get("offers").get(args["offer_id"])
+    if offer is None:
+        raise ValueError(f"offer {args['offer_id']} not found")
     action = args["action"]
     if action == "accept":
         listing = world.get("listings")[offer["listing_id"]]
@@ -143,12 +153,16 @@ def _send_message(world, args, ctx):
 
 def _flag_message(world, args, ctx):
     msg = world.get("messages").get(args["message_id"])
+    if msg is None:
+        raise ValueError(f"message {args['message_id']} not found")
     msg["flagged"] = True
     return {"flagged": True}
 
 
 def _ship_order(world, args, ctx):
     order = world.get("orders").get(args["order_id"])
+    if order is None:
+        raise ValueError(f"order {args['order_id']} not found")
     order["status"] = "shipped"
     order["label_id"] = f"label-{order['id']}"
     wallet = world.get("wallet")
@@ -160,6 +174,8 @@ def _ship_order(world, args, ctx):
 
 def _confirm_delivery(world, args, ctx):
     order = world.get("orders").get(args["order_id"])
+    if order is None:
+        raise ValueError(f"order {args['order_id']} not found")
     order["status"] = "delivered"
     return {"status": "delivered"}
 
