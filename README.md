@@ -74,3 +74,19 @@ world state — no LLM-simulated people.
 3. Gold-trajectory emission (training data from the same oracle)
 4. Declarative spec format (the "describe a world" ergonomics layer)
 5. More variants: rentals, tickets, services (same spec family)
+
+## Measured so far (first live runs, seed 42, 12 tasks)
+
+| Model | Score | calls/task | error rate |
+|---|---|---|---|
+| Qwen3-4B Q8 | 1.0 (12/12) | 1.5 | 5.6% |
+| Qwen3.6-27B IQ2_XXS | 1.0 (12/12) | 2.2 | 18.5% |
+
+The v0 bundle **saturates** — both models max it. The journey mattered more
+than the numbers: four traced failure modes were fixed live (missing-entity
+crashes -> graceful errors; weak system prompt -> narration; ambiguous inbox
+ids -> id confusion; no escalation path -> `ask_owner` tool), taking
+IQ2_XXS from 0.0 to 1.0. Next iteration: difficulty calibration —
+distractor entities, multi-round negotiation, scam *detection* (not
+labeling). The machinery (spec -> generate -> serve -> run -> verify ->
+receipt) is proven end-to-end with real models.
