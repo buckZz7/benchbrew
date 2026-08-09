@@ -112,6 +112,16 @@ cd /path/to/tau2-bench && tau2 run --domain marketplace --agent-llm ...
 
 37 tests, GPU-free (scripted agents prove the loop without any model).
 
+## For miners (Gittensor/SN74)
+
+This repo is registered for mining. Your merged PRs earn emissions; source
+code is the weight, docs/tests are light. Start with
+[`docs/MINING.md`](docs/MINING.md) — then pick a seeded issue (small,
+scoped, acceptance criteria stated). The quality bar is the audit: zero LLM
+in the pipeline, deterministic bundles, every rule sourced, bundles
+calibrated (weak model must score below strong). CI runs tests + the spec
+gate on every PR — no secrets, no servers needed.
+
 ## Adding a platform or domain
 
 Follow the gated procedure in the `benchbrew-domain-authoring` skill: research
