@@ -485,11 +485,17 @@ def arch_sell_create_listing_inbox(rng, ctx, world):
     return []
 
 
+def _norm_condition(c: str) -> str:
+    """Tolerant condition matching: 'Pre-owned - Excellent' ~= 'Excellent'."""
+    return c.lower().replace("pre-owned", "").replace("-", "").strip()
+
+
 def arch_sell_create_listing_goal(world, ctx):
     listings = [l for l in world.get("listings").values()
                 if l["seller_id"] == "me" and l["title"] == ctx["item"]
                 and l["category"] == ctx["category"] and l["price"] == ctx["price"]
-                and l["condition"] == ctx["condition"] and l["status"] == "active"]
+                and _norm_condition(l["condition"]) == _norm_condition(ctx["condition"])
+                and l["status"] == "active"]
     return _goal(world, ctx, ("listing_created_correctly", bool(listings)))
 
 
