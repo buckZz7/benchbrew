@@ -1,0 +1,204 @@
+{
+  "n_tasks": 16,
+  "success_rate": 1.0,
+  "n_success": 16,
+  "tool_calls_per_task": 1.8,
+  "tool_error_rate": 0.103,
+  "terminations": {
+    "agent_stop": 16
+  },
+  "per_task": [
+    {
+      "id": "0",
+      "archetype": "buy_avoid_scam",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 0.98
+    },
+    {
+      "id": "1",
+      "archetype": "buy_late_dispute",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.1
+    },
+    {
+      "id": "2",
+      "archetype": "buy_negotiate",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.64
+    },
+    {
+      "id": "3",
+      "archetype": "sell_create_listing",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.2
+    },
+    {
+      "id": "4",
+      "archetype": "sell_expiring_offer",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 3,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.02
+    },
+    {
+      "id": "5",
+      "archetype": "sell_list_close",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 2.22
+    },
+    {
+      "id": "6",
+      "archetype": "sell_reject_lowball",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.68
+    },
+    {
+      "id": "7",
+      "archetype": "sell_ship_on_time",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.18
+    },
+    {
+      "id": "8",
+      "archetype": "buy_avoid_scam",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.06
+    },
+    {
+      "id": "9",
+      "archetype": "buy_late_dispute",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 1,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.09
+    },
+    {
+      "id": "10",
+      "archetype": "buy_negotiate",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.1
+    },
+    {
+      "id": "11",
+      "archetype": "sell_create_listing",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 1,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.21
+    },
+    {
+      "id": "12",
+      "archetype": "sell_expiring_offer",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 3,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.98
+    },
+    {
+      "id": "13",
+      "archetype": "sell_list_close",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.15
+    },
+    {
+      "id": "14",
+      "archetype": "sell_reject_lowball",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.71
+    },
+    {
+      "id": "15",
+      "archetype": "sell_ship_on_time",
+      "success": true,
+      "reasons": [
+        "ok"
+      ],
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "termination": "agent_stop",
+      "wall_clock_s": 1.22
+    }
+  ]
+}
