@@ -169,3 +169,23 @@ Gap 0.308 — the widest separation across lanes. The Reg E reporting clock
 budget_check, price_hike), and the scam-contact rule (safe-account tell)
 break the weak model (0.6 calls/task: it does not sustain multi-step chains)
 while the strong model attempts them. Gate: weak < strong with a real gap ✓.
+
+## Domain 4: travel (itinerary concierge, TripHub) — snapshot 2026-08
+
+Mechanics and their sources:
+- **Flights — DOT 24-hour rule**: free cancellation or 24h hold within 24
+  hours of booking IF booked at least 7 days before departure (direct with
+  the airline, US-originating). The clock runs FROM BOOKING — a different
+  axis than arrival-side windows. Source: transportation.gov (Refunds page,
+  aviation consumer protection).
+- **Hotels — Hilton flexible rate**: free cancellation up to 48 hours before
+  check-in; within 48h the first night is charged. Source: hilton.com help
+  center + pointscrowd.com (Hilton cancellation policy).
+- **Cars — Hertz prepaid**: free cancellation within 24 hours of booking;
+  cancel >24h before pickup -> $100 fee; <=24h before pickup -> $200 fee
+  (fee never exceeds the prepaid total). Late returns: 30-min grace, 30+ min
+  -> hourly charges, 1.5h+ -> a full day's rental. Source: hertz.com
+  reservation policy + early/late support pages.
+- **Travel scams**: wire-transfer/gift-card/payment-app-only payment is the
+  tell ("that's a scam, every time"); fake cancellations demanding card
+  confirmation. Source: consumer.ftc.gov/articles/avoid-scams-when-you-travel.
