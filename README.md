@@ -1,92 +1,134 @@
 # BenchBrew
 
-Spec-derived, zero-LLM agent evaluation environments. Describe a world —
-the generator pours out fresh, deterministic, execution-verified task
-bundles. Same `(spec, seed)` in, identical bundle out, forever.
-
-**The trust model in one line:** public spec + public seed = anyone
-regenerates the exact same tasks. Freshness without secrecy; the pool is
-unbounded, so memorizing the distribution is what gets expensive.
-
-## Why it exists
-
-Agent evals need environments. Building them by hand doesn't scale (the
-τ²-bench domains are hand-authored), and the 2026 generation pipelines
-(AWM, WebArena-Infinity) author environments with LLMs — which relocates
-trust into a stochastic process no one can re-run. BenchBrew is the third
-corner: **the policy spec is the oracle** — entities, tools, rules, and
-task archetypes — and everything (simulator, tasks, verifier) derives from
-it deterministically. No LLM anywhere in the pipeline.
-
-## v0 contents
+**Spec-derived, zero-LLM agent evaluation environments — a factory that brews
+fresh, deterministic, execution-verified task bundles from a public spec and a
+seed. Anyone can regenerate the exact same tasks. No LLM judge anywhere.**
 
 ```
-benchbrew/
-  spec.py       DomainSpec, World (storage-agnostic), canonical hashing
-  generator.py  (spec, seed) -> baseline world + per-task worlds + tasks
-  simulator.py  tool dispatch + policy rules (PolicyError on violation)
-  verifier.py   valid-outcome-set predicates (DB state only, no judge)
-  emitter.py    tau2-format tasks.json + checks.py + manifest.json
-domains/
-  marketplace.py  v1 domain: second-hand marketplace (buy/sell concierge)
-tests/
-  test_benchbrew.py  determinism, policy, verifier, emitter (12 tests)
+      (policy spec, public seed)
+                  │
+   BenchBrew ────▶ τ²-format domain ────▶ tau2 run ────▶ receipts
+   (factory)        (runnable env)         (runtime)      (evidence)
+                  │
+                  └──▶ Pilsner arena: per-lane kings, >2% rule, leaderboard
 ```
 
-## Use
+## The problem
+
+Agent evals need environments, and the 2026 generation has three failure
+modes:
+
+1. **Static and contaminable** — SWE-bench's tasks leak into training data;
+   nobody can regenerate them.
+2. **LLM judges in the loop** — τ²-bench ships an LLM-judged evaluator; AWM
+   (ICML 2026) generates environments *and* verifiers with LLMs. A stochastic
+   judge is a gaming surface and breaks comparability.
+3. **Hand-authored, so they don't scale** — τ² has 4 domains because
+   authoring is the bottleneck.
+
+BenchBrew is the third corner: **the policy spec is the oracle.** Entities,
+tools, rules, and task archetypes are declared in a spec; the simulator, the
+tasks, and the verifier all derive from it deterministically. No LLM anywhere
+in the pipeline. `(spec, seed)` → identical bundle, forever. Freshness without
+secrecy; the pool is unbounded, so memorizing it is uneconomical.
+
+## Trust properties (the audit)
+
+- **Zero-LLM in generation, simulation, and verification** — the oracle is
+  DB-state predicates (`ENV_ASSERTION` in τ² terms), never a judge.
+- **Deterministic regeneration** — `(spec, seed)` → identical bundle hash;
+  nothing hidden, re-runnable by anyone.
+- **Grounded mechanics** — every rule traces to a real, citable policy
+  (GROUNDING.md): eBay fees (13.25% + $0.30), 30-day Money Back Guarantee,
+  Poshmark's 24h offer expiry, seller-level thresholds, FTC-documented scam
+  patterns. Policy drift is versioned via the spec hash, never silent.
+- **Storage- and runner-agnostic** — world state is plain dicts; the bundle
+  runs on our zero-dependency runner OR emits a complete runnable τ² domain
+  (the arena's official harness).
+
+## The v1 domain: second-hand marketplace (buy/sell concierge)
+
+The evaluated agent is **Alex's personal assistant on a marketplace** — the
+on-device-agent use case. Both sides:
+
+- **sell**: list items, accept offers at/above the floor, decline lowballs,
+  flag scams, ship on time (or lose Top Rated)
+- **buy**: negotiate within budget, avoid scam sellers, know the protection
+  window
+
+Counterparty activity is deterministic world state + scripted mid-run events
+(the seller counters your offer) — no LLM-simulated people.
+
+## Measured so far
+
+Standalone runner (benchbrew/runner.py), 22-task bundle, seed 42, live models:
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3.6-27B IQ1_M (1-bit) | 0.682 (15/22) | 3.7 | 22.2% |
+| Qwen3-4B Q8 | 0.909 (20/22) | 2.1 | 10.6% |
+| Qwen3.6-27B IQ2_XXS (2-bit) | 0.909 (20/22) | 2.5 | 7.3% |
+
+The ordering reproduces the Pilsner arena's known cliff: 1-bit collapses on
+multi-decision orchestration (fails `sell_full_inbox` outright), 2-bit and 4B
+are healthy. The multi-decision archetypes exist precisely to make the lane
+discriminate — the 1-bit canary is part of the calibration gate.
+
+**Pilsner plug-in (the integration):** the same bundle emits a complete
+runnable τ² domain — registered, per-task worlds applied, oracle enforced
+through τ²'s own evaluator. First end-to-end receipt:
+
+```
+tau2 run --domain marketplace --agent-llm qwen36-iq2xxs ... 
+→ Average Reward 0.667 (2/3), scored by ENV_ASSERTION (spec-derived predicates)
+```
+
+## Quick start
 
 ```bash
-python3 -m unittest discover -s tests -v     # 12 tests, GPU-free
-python3 -m benchbrew --seed 42 --tasks 12    # generate + emit a bundle
+# generate + emit a deterministic bundle
+python3 -m benchbrew --seed 42 --tasks 12
+
+# run it against any OpenAI-compatible endpoint (our zero-dep runner)
+BENCHBREW_BASE_URL=... BENCHBREW_MODEL=... python3 - <<'EOF'
+from benchbrew.runner import OpenAIClientAgent, run_bundle, report
+from domains.marketplace import MARKETPLACE
+print(report(run_bundle(MARKETPLACE, OpenAIClientAgent(
+    os.environ['BENCHBREW_BASE_URL'], os.environ['BENCHBREW_MODEL']),
+    seed=42, n_tasks=22)))
+EOF
+
+# emit a τ²-runnable domain and run it through the arena's harness
+python3 -c "from benchbrew.generator import Generator; from benchbrew.emitter_tau2 import emit_tau2_domain; from domains.marketplace import MARKETPLACE; w,t=Generator(MARKETPLACE).generate(42,16); emit_tau2_domain(MARKETPLACE,42,t,w,'/path/to/tau2-bench')"
+cd /path/to/tau2-bench && tau2 run --domain marketplace --agent-llm ... 
 ```
 
-The bundle (`outputs/`) is the artifact: `tasks.json` in τ²-bench schema
-(`reward_basis: DB`, zero NL assertions), `checks.py` with the spec-derived
-verifier predicates, `manifest.json` binding spec hash + seed + bundle hash.
+37 tests, GPU-free (scripted agents prove the loop without any model).
 
-## v1 domain: marketplace
+## Adding a platform or domain
 
-The evaluated agent is the owner's personal assistant on a Poshmark-shaped
-marketplace — the on-device-agent use case. Both sides:
+Follow the gated procedure in the `benchbrew-domain-authoring` skill: research
+the real policies with sources → fill the PLATFORM profile (fees, protection
+window, conditions, offer expiry, seller levels, scam patterns, mediation
+level) → wire mechanics → archetypes → tests → **calibration gate** (weak
+model must score below strong; a 1-bit canary must fail) → practitioner review.
+`validate_spec` refuses any rule without a source. The platform spectrum
+(Craigslist → FB Marketplace → OfferUp → Depop → Mercari → Vinted → Poshmark
+→ eBay → Mercado Libre escrow) is one world family at different knob settings
+— a new platform is a config, not new machinery.
 
-- **sell**: list an item, accept good offers (floor-enforced), decline
-  lowballs, flag scams, ship
-- **buy**: negotiate within budget, avoid scam sellers
+## Why this matters for Gittensor
 
-Policy rules (the oracle): owner floor, scam-actor transaction block,
-buyer funds, dispute-only-after-delivery, platform auto-accept at the
-listing's threshold. Counterparty activity pre-exists as deterministic
-world state — no LLM-simulated people.
+On-device and mixture-of-models serving need **cheap, fast, specialized
+tool-calling agents** ("cogs") — and a way to know which cog to route a task
+to. BenchBrew produces the rulers: execution-verified, trustless, per-lane
+scores that any mixture can use as its routing table. Pilsner runs the
+competition (kings, the >2% ratchet, public receipts); BenchBrew keeps the
+task pool fresh so the ruler can't be memorized. The whole loop is public,
+deterministic, and LLM-free.
 
-## Design constraints (the audit)
+## Repos
 
-- Zero-LLM: no LLM in generation, simulation, or verification
-- Deterministic regeneration: `(spec, seed)` -> identical bundle hash
-- Execution-verified: DB-state predicates only, no judge
-- Storage-agnostic world (Pydantic-style state; swappable backend)
-- Rules-as-code for v0; a declarative DSL (YAML) is the next layer
-
-## Roadmap (short)
-
-1. Runner: execute bundles against an OpenAI-compatible endpoint (the
-   arena loop — serve, run, receipt)
-2. τ²-runnable evaluator module (their EnvironmentEvaluator contract)
-3. Gold-trajectory emission (training data from the same oracle)
-4. Declarative spec format (the "describe a world" ergonomics layer)
-5. More variants: rentals, tickets, services (same spec family)
-
-## Measured so far (first live runs, seed 42, 12 tasks)
-
-| Model | Score | calls/task | error rate |
-|---|---|---|---|
-| Qwen3-4B Q8 | 1.0 (12/12) | 1.5 | 5.6% |
-| Qwen3.6-27B IQ2_XXS | 1.0 (12/12) | 2.2 | 18.5% |
-
-The v0 bundle **saturates** — both models max it. The journey mattered more
-than the numbers: four traced failure modes were fixed live (missing-entity
-crashes -> graceful errors; weak system prompt -> narration; ambiguous inbox
-ids -> id confusion; no escalation path -> `ask_owner` tool), taking
-IQ2_XXS from 0.0 to 1.0. Next iteration: difficulty calibration —
-distractor entities, multi-round negotiation, scam *detection* (not
-labeling). The machinery (spec -> generate -> serve -> run -> verify ->
-receipt) is proven end-to-end with real models.
+- **benchbrew** — this factory: spec → bundles → runners → τ² emission
+- **pilsner** — the arena: ladder batteries, per-lane kings, leaderboard
+  (consumes BenchBrew evals it didn't write)
