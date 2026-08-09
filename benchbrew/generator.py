@@ -37,6 +37,8 @@ class Generator:
                 "ctx": ctx,
                 "prompt": arch["prompt"](ctx),
                 "inbox": arch["inbox"](rng, ctx, world),
+                "counterparty": arch.get("counterparty",
+                                         lambda rng, ctx, world: [])(rng, ctx, world),
                 "initial_world": world,
                 # goal is a function reference; serialized form emitted separately
                 "goal": arch["goal"],

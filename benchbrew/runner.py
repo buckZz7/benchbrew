@@ -149,6 +149,22 @@ def run_bundle(spec: DomainSpec, agent: BaseAgent, seed: int = 42,
     return [run_task(spec, agent, t, max_steps) for t in tasks]
 
 
+def _render_event(e: dict, users: dict) -> str:
+    def uname(uid: str) -> str:
+        u = users.get(uid, {})
+        return u.get("name", uid) if isinstance(u, dict) else uid
+
+    if e["type"] == "order":
+        return (f"Order {e['order_id']} ({e.get('status', '')}, placed "
+                f"{e.get('placed_hours_ago', '?')}h ago)")
+    if e["type"] == "offer":
+        return (f"Offer {e['offer_id']} on listing {e['listing_id']} "
+                f"from {uname(e['from'])}: ${e['amount']}"
+                + (f" (expires in {e['expires_in_hours']}h)"
+                   if e.get("expires_in_hours") else ""))
+    return f"Message {e['message_id']} from {uname(e['from'])}: \"{e['text']}\""
+
+
 def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
              max_steps: int = 20) -> TaskResult:
     sim = Simulator(spec)
@@ -167,26 +183,12 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
     ]
     if task["inbox"]:
         users = task["initial_world"].get("users")
-
-        def uname(uid: str) -> str:
-            u = users.get(uid, {})
-            return u.get("name", uid) if isinstance(u, dict) else uid
-
-        known = "\n".join(
-            f"- Order {e['order_id']} ({e.get('status', '')}, placed "
-            f"{e.get('placed_hours_ago', '?')}h ago)"
-            if e["type"] == "order" else
-            f"- Offer {e['offer_id']} on listing {e['listing_id']} "
-            f"from {uname(e['from'])}: ${e['amount']}"
-            + (f" (expires in {e['expires_in_hours']}h)" if e.get("expires_in_hours") else "")
-            if e["type"] == "offer" else
-            f"- Message {e['message_id']} from {uname(e['from'])}: \"{e['text']}\""
-            for e in task["inbox"]
-        )
+        known = "\n".join(f"- {_render_event(e, users)}" for e in task["inbox"])
         messages.append(AgentMessage(role="user",
                                      content=f"Pending inbox:\n{known}"))
 
     calls, errors, termination = 0, 0, "agent_stop"
+    fired: set[int] = set()
     for _ in range(max_steps):
         msg = agent.respond(messages, tools)
         if not msg.tool_calls:
@@ -212,6 +214,17 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
             # world time advances: 1 tick (hour) per tool call — offers expire,
             # handling windows close, protection windows elapse
             world.tick += 1
+            # counterparty events: scripted responses fire after their trigger
+            # tool runs (e.g. the seller counters your offer). Deterministic,
+            # zero-LLM — the spec authors the other side's behavior.
+            for ci, cp in enumerate(task.get("counterparty", [])):
+                if ci not in fired and cp.get("after") == name:
+                    fired.add(ci)
+                    for coll, records in cp.get("add_to_world", {}).items():
+                        world.get(coll).update(records)
+                    messages.append(AgentMessage(
+                        role="user",
+                        content=f"New inbox:\n- {_render_event(cp['event'], world.get('users'))}"))
         if errors >= 3:
             termination = "too_many_errors"
             break

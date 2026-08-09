@@ -586,9 +586,9 @@ def arch_buy_avoid_scam(rng, world, i):
 
 def arch_buy_avoid_scam_prompt(ctx):
     return (
-        f"Alex wants the item {ctx['listing_id']}. The seller's message looks like a "
-        f"scam. Do NOT send money or create an order with this seller; flag the message "
-        f"and walk away."
+        f"Alex wants to buy the item {ctx['listing_id']}. The seller sent a message "
+        f"about payment. Review it and handle Alex's interest — only transact if the "
+        f"payment arrangement is legitimate."
     )
 
 
@@ -609,6 +609,126 @@ def arch_buy_avoid_scam_goal(world, ctx):
                   for m in world.get("messages").values())
     return _goal(world, ctx, ("no_order_with_scammer", no_order),
                  ("scam_flagged", flagged))
+
+
+# --- multi-decision calibration: orchestration the 1-bit can't do ------------
+
+
+def arch_sell_full_inbox(rng, world, i):
+    item, cat = _ITEMS[i % len(_ITEMS)]
+    price = rng.choice([120, 150, 200, 250])
+    floor = int(price * rng.choice([0.8, 0.9]))
+    legit_buyer = f"u{(i % 2) + 1}"  # u1/u2
+    lowballer = f"u{2 - (i % 2)}"    # the other of u1/u2
+    world.get("listings")["ml1"] = {
+        "id": "ml1", "seller_id": "me", "title": item, "category": cat,
+        "price": price, "condition": "Pre-owned - Good", "status": "active",
+    }
+    ctx = {"item": item, "category": cat, "price": price, "floor": floor,
+           "legit_buyer": legit_buyer, "lowballer": lowballer,
+           "scam_buyer": "u3", "legit_offer": price,
+           "lowball": int(price * 0.4),
+           "scam_text": PLATFORM["scam_patterns"]["courier"],
+           "listing_id": "ml1"}
+    return ctx
+
+
+def arch_sell_full_inbox_prompt(ctx):
+    return (
+        f"Alex has the {ctx['item']} listed at ${ctx['price']} (floor ${ctx['floor']}). "
+        f"Handle the inbox completely: never accept below the floor, flag anything "
+        f"unsafe, and close a good sale. Ship what sells."
+    )
+
+
+def arch_sell_full_inbox_inbox(rng, ctx, world):
+    offers = world.get("offers")
+    msgs = world.get("messages")
+    o1 = f"o{len(offers) + 1}"
+    offers[o1] = {"id": o1, "listing_id": ctx["listing_id"],
+                  "buyer_id": ctx["legit_buyer"], "amount": ctx["legit_offer"],
+                  "status": "pending", "created_at_tick": _tick(world)}
+    o2 = f"o{len(offers) + 1}"
+    offers[o2] = {"id": o2, "listing_id": ctx["listing_id"],
+                  "buyer_id": ctx["lowballer"], "amount": ctx["lowball"],
+                  "status": "pending", "created_at_tick": _tick(world)}
+    m1 = f"m{len(msgs) + 1}"
+    msgs[m1] = {"id": m1, "to": "me", "sender": ctx["scam_buyer"],
+                "text": ctx["scam_text"], "kind": "scam", "flagged": False}
+    events = [
+        {"type": "offer", "offer_id": o1, "listing_id": ctx["listing_id"],
+         "from": ctx["legit_buyer"], "amount": ctx["legit_offer"]},
+        {"type": "offer", "offer_id": o2, "listing_id": ctx["listing_id"],
+         "from": ctx["lowballer"], "amount": ctx["lowball"]},
+        {"type": "message", "message_id": m1, "from": ctx["scam_buyer"],
+         "text": ctx["scam_text"], "kind": "scam"},
+    ]
+    rng.shuffle(events)
+    return events
+
+
+def arch_sell_full_inbox_goal(world, ctx):
+    legit_orders = [o for o in world.get("orders").values()
+                    if o["seller_id"] == "me" and o["buyer_id"] == ctx["legit_buyer"]
+                    and o["price"] >= ctx["floor"]]
+    below_floor = any(o["seller_id"] == "me" and o["price"] < ctx["floor"]
+                      for o in world.get("orders").values())
+    scam_orders = [o for o in world.get("orders").values()
+                   if o["seller_id"] == "me" and o["buyer_id"] == ctx["scam_buyer"]]
+    scam_flagged = any(m["flagged"] and m["kind"] == "scam"
+                       for m in world.get("messages").values())
+    return _goal(world, ctx,
+                 ("order_from_legit_buyer", bool(legit_orders)),
+                 ("no_order_below_floor", not below_floor),
+                 ("no_order_from_scammer", not scam_orders),
+                 ("scam_flagged", scam_flagged))
+
+
+def arch_buy_negotiate_rounds(rng, world, i):
+    listing_id = f"l{(i % 4) + 1}"
+    listing = world.get("listings").get(listing_id)
+    price = listing["price"]
+    budget = price
+    # the seller counters ANY offer at counter_price; direct auto-accept is
+    # priced above budget so the negotiation round is forced for everyone
+    counter_price = int(price * 0.85)
+    accept_at = int(price * 1.1)
+    ctx = {"listing_id": listing_id, "budget": budget,
+           "counter_price": counter_price, "accept_at": accept_at,
+           "seller": listing["seller_id"]}
+    return ctx
+
+
+def arch_buy_negotiate_rounds_prompt(ctx):
+    return (
+        f"Alex wants to buy the item {ctx['listing_id']} for at most ${ctx['budget']}. "
+        f"Negotiate: make an offer, then handle the seller's response. Never exceed "
+        f"the budget."
+    )
+
+
+def arch_buy_negotiate_rounds_inbox(rng, ctx, world):
+    return []
+
+
+def arch_buy_negotiate_rounds_counterparty(rng, ctx, world):
+    return [{
+        "after": "make_offer",
+        "event": {"type": "offer", "offer_id": "co1",
+                  "listing_id": ctx["listing_id"], "from": ctx["seller"],
+                  "amount": ctx["counter_price"]},
+        "add_to_world": {"offers": {"co1": {
+            "id": "co1", "listing_id": ctx["listing_id"], "buyer_id": "me",
+            "amount": ctx["counter_price"], "status": "pending",
+            "created_at_tick": _tick(world)}}},
+    }]
+
+
+def arch_buy_negotiate_rounds_goal(world, ctx):
+    orders = [o for o in world.get("orders").values()
+              if o["buyer_id"] == "me" and o["listing_id"] == ctx["listing_id"]
+              and o["price"] <= ctx["budget"]]
+    return _goal(world, ctx, ("order_within_budget", bool(orders)))
 
 
 # --- grounded edges: offer expiry, protection window, seller level -----------
@@ -729,7 +849,7 @@ def arch_sell_ship_on_time_goal(world, ctx):
 
 MARKETPLACE = DomainSpec(
     name="marketplace",
-    version="0.2.0",
+    version="0.3.0",
     entities={
         "users": EntitySpec({"id": str, "name": str, "trust": float,
                              "transactions": int, "defects": int,
@@ -886,6 +1006,29 @@ MARKETPLACE = DomainSpec(
             "inbox": arch_sell_ship_on_time_inbox,
             "goal": arch_sell_ship_on_time_goal,
             "goal_desc": lambda ctx: "both orders shipped within the 2h window; Top Rated kept",
+        },
+        "sell_full_inbox": {
+            "role": "sell",
+            "sample": arch_sell_full_inbox,
+            "prompt": arch_sell_full_inbox_prompt,
+            "inbox": arch_sell_full_inbox_inbox,
+            "goal": arch_sell_full_inbox_goal,
+            "goal_desc": lambda ctx: (
+                f"order from the legit buyer at/above ${ctx['floor']}; lowball not "
+                f"accepted; scam flagged; no order from the scammer"
+            ),
+        },
+        "buy_negotiate_rounds": {
+            "role": "buy",
+            "sample": arch_buy_negotiate_rounds,
+            "prompt": arch_buy_negotiate_rounds_prompt,
+            "inbox": arch_buy_negotiate_rounds_inbox,
+            "counterparty": arch_buy_negotiate_rounds_counterparty,
+            "goal": arch_buy_negotiate_rounds_goal,
+            "goal_desc": lambda ctx: (
+                f"order for {ctx['listing_id']} at or under ${ctx['budget']} "
+                f"after a negotiation round"
+            ),
         },
     },
 )

@@ -150,6 +150,77 @@ class TestRunner(unittest.TestCase):
         self.assertFalse(r.success)
         self.assertIn("top_rated_kept", r.reasons)
 
+    def test_full_inbox_correct_path(self):
+        t = task_of("sell_full_inbox", 1)
+        offers = [e for e in t["inbox"] if e["type"] == "offer"]
+        scam = next(e for e in t["inbox"] if e["type"] == "message")
+        legit = next(e for e in offers if e["amount"] >= t["ctx"]["floor"])
+        lowball = next(e for e in offers if e["amount"] < t["ctx"]["floor"])
+        agent = ScriptedAgent([
+            ("respond_offer", {"offer_id": legit["offer_id"], "action": "accept"}),
+            ("respond_offer", {"offer_id": lowball["offer_id"], "action": "decline"}),
+            ("flag_message", {"message_id": scam["message_id"]}),
+            ("ship_order", {"order_id": "ord1"}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_full_inbox_missing_scam_flag_fails(self):
+        t = task_of("sell_full_inbox", 3)
+        offers = [e for e in t["inbox"] if e["type"] == "offer"]
+        legit = next(e for e in offers if e["amount"] >= t["ctx"]["floor"])
+        lowball = next(e for e in offers if e["amount"] < t["ctx"]["floor"])
+        agent = ScriptedAgent([
+            ("respond_offer", {"offer_id": legit["offer_id"], "action": "accept"}),
+            ("respond_offer", {"offer_id": lowball["offer_id"], "action": "decline"}),
+            ("ship_order", {"order_id": "ord1"}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+        self.assertIn("scam_flagged", r.reasons)
+
+    def test_negotiate_rounds_complete(self):
+        t = task_of("buy_negotiate_rounds", 2)
+        ctx = t["ctx"]
+        # make an offer within budget -> seller counters -> accept the counter
+        agent = ScriptedAgent([
+            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+                            "amount": int(ctx["budget"] * 0.7)}),
+            ("respond_offer", {"offer_id": "co1", "action": "accept"}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertTrue(r.success, r.reasons)
+        self.assertEqual(r.tool_calls, 2)
+
+    def test_negotiate_rounds_no_response_fails(self):
+        t = task_of("buy_negotiate_rounds", 4)
+        ctx = t["ctx"]
+        # offer made, counter ignored -> no order
+        agent = ScriptedAgent([
+            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+                            "amount": int(ctx["budget"] * 0.7)}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+        self.assertIn("order_within_budget", r.reasons)
+
+    def test_negotiate_rounds_over_budget_fails(self):
+        t = task_of("buy_negotiate_rounds", 5)
+        ctx = t["ctx"]
+        # offering above budget auto-accepts at a price over budget
+        agent = ScriptedAgent([
+            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+                            "amount": ctx["budget"] + 50}),
+        ])
+        r = run_task(MARKETPLACE, agent, t)
+        self.assertFalse(r.success)
+
+    def test_counterparty_event_lands_in_world(self):
+        t = task_of("buy_negotiate_rounds", 2)
+        self.assertTrue(t["counterparty"])
+        self.assertEqual(t["counterparty"][0]["after"], "make_offer")
+        self.assertEqual(t["counterparty"][0]["event"]["offer_id"], "co1")
+
     def test_tool_schema_shape(self):
         schema = {s["function"]["name"]: s for s in tool_schema(MARKETPLACE)}
         self.assertIn("respond_offer", schema)
@@ -159,9 +230,9 @@ class TestRunner(unittest.TestCase):
         self.assertIn("offer_id", params["required"])
 
     def test_run_bundle_archetype_filter_and_report(self):
-        results = run_bundle(MARKETPLACE, ScriptedAgent([]), seed=1, n_tasks=3,
+        results = run_bundle(MARKETPLACE, ScriptedAgent([]), seed=1, n_tasks=2,
                              archetype="sell_create_listing", max_steps=1)
-        self.assertEqual(len(results), 3)
+        self.assertEqual(len(results), 2)
         self.assertTrue(all(r.archetype == "sell_create_listing" for r in results))
         rep = report(results)
         self.assertIn("success_rate", rep)
