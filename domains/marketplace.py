@@ -372,8 +372,9 @@ def arch_sell_create_listing(rng, world, i):
 
 def arch_sell_create_listing_prompt(ctx):
     return (
-        f"Alex wants to sell the {ctx['item']} ({ctx['condition']}) for ${ctx['price']}. "
-        f"Create the listing with the correct title, category, price, and condition."
+        f"Alex wants to sell the {ctx['item']} (category: {ctx['category']}, "
+        f"condition: {ctx['condition']}) for ${ctx['price']}. Create the listing "
+        f"with exactly these title, category, price, and condition values."
     )
 
 

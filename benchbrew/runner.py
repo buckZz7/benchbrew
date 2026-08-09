@@ -166,8 +166,17 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
         AgentMessage(role="user", content=task["prompt"]),
     ]
     if task["inbox"]:
+        users = task["initial_world"].get("users")
+
+        def uname(uid: str) -> str:
+            u = users.get(uid, {})
+            return u.get("name", uid) if isinstance(u, dict) else uid
+
         known = "\n".join(
-            f"- {e['type']}: {e.get('from','')} {e.get('amount', e.get('text',''))}"
+            f"- Offer {e['offer_id']} on listing {e['listing_id']} "
+            f"from {uname(e['from'])}: ${e['amount']}"
+            if e["type"] == "offer" else
+            f"- Message {e['message_id']} from {uname(e['from'])}: \"{e['text']}\""
             for e in task["inbox"]
         )
         messages.append(AgentMessage(role="user",

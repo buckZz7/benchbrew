@@ -17,16 +17,22 @@ from .spec import DomainSpec, World, bundle_hash
 
 def serialize_task(task: dict) -> dict:
     ctx = task["ctx"]
+    users = task["initial_world"].get("users")
+
+    def uname(uid: str) -> str:
+        u = users.get(uid, {})
+        return u.get("name", uid) if isinstance(u, dict) else uid
+
     inbox_lines = []
     for ev in task["inbox"]:
         if ev["type"] == "offer":
             inbox_lines.append(
                 f"Offer {ev['offer_id']} on listing {ev['listing_id']} from "
-                f"{ev['from']}: ${ev['amount']}"
+                f"{uname(ev['from'])}: ${ev['amount']}"
             )
         elif ev["type"] == "message":
             inbox_lines.append(
-                f"Message from {ev['from']}: \"{ev['text']}\""
+                f"Message {ev['message_id']} from {uname(ev['from'])}: \"{ev['text']}\""
             )
     known = "\n".join(inbox_lines) if inbox_lines else "No pending inbox items."
     return {
