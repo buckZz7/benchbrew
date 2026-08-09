@@ -173,6 +173,9 @@ def run_task(spec: DomainSpec, agent: BaseAgent, task: dict,
             return u.get("name", uid) if isinstance(u, dict) else uid
 
         known = "\n".join(
+            f"- Order {e['order_id']} ({e.get('status', '')}, placed "
+            f"{e.get('placed_hours_ago', '?')}h ago)"
+            if e["type"] == "order" else
             f"- Offer {e['offer_id']} on listing {e['listing_id']} "
             f"from {uname(e['from'])}: ${e['amount']}"
             + (f" (expires in {e['expires_in_hours']}h)" if e.get("expires_in_hours") else "")

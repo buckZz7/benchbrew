@@ -705,7 +705,8 @@ def arch_sell_ship_on_time_prompt(ctx):
 
 
 def arch_sell_ship_on_time_inbox(rng, ctx, world):
-    return []
+    return [{"type": "order", "order_id": f"ord{n}", "status": "paid",
+             "placed_hours_ago": 1} for n in (1, 2)]
 
 
 def arch_sell_ship_on_time_goal(world, ctx):

@@ -25,7 +25,12 @@ def serialize_task(task: dict) -> dict:
 
     inbox_lines = []
     for ev in task["inbox"]:
-        if ev["type"] == "offer":
+        if ev["type"] == "order":
+            inbox_lines.append(
+                f"Order {ev['order_id']} ({ev.get('status', '')}, placed "
+                f"{ev.get('placed_hours_ago', '?')}h ago)"
+            )
+        elif ev["type"] == "offer":
             inbox_lines.append(
                 f"Offer {ev['offer_id']} on listing {ev['listing_id']} from "
                 f"{uname(ev['from'])}: ${ev['amount']}"
