@@ -15,7 +15,7 @@ gen = Generator(LOCAL_SERVICES)
 
 
 def task_of(archetype: str, seed: int = 3):
-    _, tasks = gen.generate(seed, 16)
+    _, tasks = gen.generate(seed, 40)
     return next(t for t in tasks if t["archetype"] == archetype)
 
 
@@ -263,6 +263,99 @@ class TestRunner(unittest.TestCase):
         r = run_task(LOCAL_SERVICES, ScriptedAgent([]), t)
         self.assertFalse(r.success)
         self.assertIn("scam_flagged", r.reasons)
+
+    # ---- v0.2 hardening shapes ----
+
+    def test_tasker_choice_right(self):
+        t = task_of("tasker_choice", 3)
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("request_booking", {"tasker_id": t["ctx"]["right_tasker"],
+                                 "service_id": t["ctx"]["service_id"],
+                                 "scheduled_at_tick": 48,
+                                 "hours": t["ctx"]["hours"]}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_tasker_choice_over_budget_fails(self):
+        t = task_of("tasker_choice", 3)
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("request_booking", {"tasker_id": "u5",  # $45/h -> over budget
+                                 "service_id": t["ctx"]["service_id"],
+                                 "scheduled_at_tick": 48,
+                                 "hours": t["ctx"]["hours"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("right_tasker_booked", r.reasons)
+
+    def test_double_booked_resolved(self):
+        t = task_of("double_booked", 3)
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("reschedule_booking", {"booking_id": t["ctx"]["booking_ids"][0],
+                                    "new_scheduled_at_tick": 48}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_double_booked_noop_fails(self):
+        t = task_of("double_booked", 3)
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([]), t)
+        self.assertFalse(r.success)
+        self.assertIn("no_conflict", r.reasons)
+
+    def test_scam_distraction_both_actions(self):
+        t = task_of("scam_distraction", 3)
+        mid = next(e["message_id"] for e in t["inbox"] if e["type"] == "message")
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("cancel_booking", {"booking_id": t["ctx"]["booking_id"]}),
+            ("flag_message", {"message_id": mid}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_scam_distraction_only_cancel_fails(self):
+        t = task_of("scam_distraction", 3)
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("cancel_booking", {"booking_id": t["ctx"]["booking_id"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("scam_flagged", r.reasons)
+
+    def test_provider_inbox_triage_correct(self):
+        t = task_of("provider_inbox_triage", 3)
+        mid = next(e["message_id"] for e in t["inbox"] if e["type"] == "message")
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("accept_booking_request", {"booking_id": t["ctx"]["good"]}),
+            ("flag_message", {"message_id": mid}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_provider_inbox_triage_accepts_scam_client_fails(self):
+        t = task_of("provider_inbox_triage", 3)
+        mid = next(e["message_id"] for e in t["inbox"] if e["type"] == "message")
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("accept_booking_request", {"booking_id": t["ctx"]["good"]}),
+            ("accept_booking_request", {"booking_id": t["ctx"]["bad"]}),
+            ("flag_message", {"message_id": mid}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("scam_client_not_accepted", r.reasons)
+
+    def test_full_lifecycle_complete(self):
+        t = task_of("full_lifecycle", 3)
+        ctx = t["ctx"]
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("accept_booking_request", {"booking_id": ctx["booking_id"]}),
+            ("submit_invoice", {"booking_id": ctx["booking_id"],
+                                "hours_worked": ctx["hours"]}),
+        ]), t)
+        self.assertTrue(r.success, r.reasons)
+
+    def test_full_lifecycle_stops_after_accept_fails(self):
+        t = task_of("full_lifecycle", 3)
+        ctx = t["ctx"]
+        r = run_task(LOCAL_SERVICES, ScriptedAgent([
+            ("accept_booking_request", {"booking_id": ctx["booking_id"]}),
+        ]), t)
+        self.assertFalse(r.success)
+        self.assertIn("invoiced", r.reasons)
 
 
 if __name__ == "__main__":
