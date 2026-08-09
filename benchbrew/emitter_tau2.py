@@ -297,6 +297,30 @@ class MarketplaceTools(ToolKitBase):
             raise ValueError(f"user {user_id} not found")
         return self.db.wallet[user_id].model_dump()
 
+    @is_tool(ToolType.READ)
+    def get_inbox(self) -> dict:
+        """Get Alex's pending offers, messages, and orders — the inbox.
+
+        Returns:
+            A dict with pending offers (on or from Alex), messages to Alex,
+            and open orders (paid/shipped/delivered).
+        """
+        my_offers = [
+            o.model_dump() for o in self.db.offers.values()
+            if o.status == "pending"
+            and (o.buyer_id == "me"
+                 or self.db.listings.get(o.listing_id) is not None
+                 and self.db.listings[o.listing_id].seller_id == "me")
+        ]
+        my_msgs = [m.model_dump() for m in self.db.messages.values()
+                   if m.to == "me"]
+        my_orders = [
+            o.model_dump() for o in self.db.orders.values()
+            if o.status in ("paid", "shipped", "delivered")
+            and (o.seller_id == "me" or o.buyer_id == "me")
+        ]
+        return {"offers": my_offers, "messages": my_msgs, "orders": my_orders}
+
     # -- write tools (rules enforced before mutation; tick advances) --------
 
     @is_tool(ToolType.WRITE)

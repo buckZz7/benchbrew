@@ -127,6 +127,26 @@ def _get_wallet(world, args, ctx):
     return wallet
 
 
+def _get_inbox(world, args, ctx):
+    """Pending work addressed to Alex: offers on/from Alex, messages to
+    Alex, and open orders. The agent MUST query this in the τ² path — the
+    inbox is world state, not a prompt handout."""
+    me = ME
+    my_offers = [
+        o for o in world.get("offers").values()
+        if o["status"] == "pending"
+        and (o["buyer_id"] == me
+             or world.get("listings").get(o["listing_id"], {}).get("seller_id") == me)
+    ]
+    my_msgs = [m for m in world.get("messages").values() if m["to"] == me]
+    my_orders = [
+        o for o in world.get("orders").values()
+        if o["status"] in ("paid", "shipped", "delivered")
+        and (o["seller_id"] == me or o["buyer_id"] == me)
+    ]
+    return {"offers": my_offers, "messages": my_msgs, "orders": my_orders}
+
+
 def _make_offer(world, args, ctx):
     listing = world.get("listings").get(args["listing_id"])
     if listing is None:
@@ -884,6 +904,8 @@ MARKETPLACE = DomainSpec(
                               "create a new active listing"),
         "get_wallet": ToolSpec("get_wallet", {"user_id": str}, "read",
                                "get a user's wallet balance"),
+        "get_inbox": ToolSpec("get_inbox", {}, "read",
+                              "get Alex's pending offers, messages, and orders"),
         "make_offer": ToolSpec("make_offer", {"listing_id": str, "buyer_id": str,
                                               "amount": int}, "write",
                                "make an offer; auto-accepted at/above the listing's threshold"),
@@ -925,6 +947,7 @@ MARKETPLACE = DomainSpec(
         "get_listing": _get_listing,
         "list_item": _list_item,
         "get_wallet": _get_wallet,
+        "get_inbox": _get_inbox,
         "make_offer": _make_offer,
         "respond_offer": _respond_offer,
         "send_message": _send_message,
