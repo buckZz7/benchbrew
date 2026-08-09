@@ -203,3 +203,16 @@ strong model works the full itinerary. CAVEAT: 0.95 is near-ceiling for the
 strong model — v0.2 should add change-fee math, multi-booking cancellation
 chains, and hotel no-show shapes to pull it to ~0.85 and leave dethrone
 headroom (same hardening arc as marketplace v0.3->v0.5).
+
+### marketplace calibration (v0.5 RE-MEASUREMENT, seed 42, 26 tasks — 13 archetypes x 2)
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3-4B Q8 (weak) | 0.231 | 0.7 | 11.8% |
+| Qwen3.6-27B IQ2_XXS (strong) | 0.923 | 2.5 | 6.2% |
+
+Gap 0.69 — the historical 0.91/0.91 compression was v0.3-era data; the
+v0.4/v0.5 hardening (counterparty events, scam variants, refund math,
+full-inbox triage, actor binding) resolved it. Weak collapsed 0.909 -> 0.231
+while strong held. Lane is IN WINDOW; no further hardening planned
+(lesson: re-measure before building — the trigger is the measurement).
