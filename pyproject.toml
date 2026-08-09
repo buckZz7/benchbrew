@@ -1,0 +1,10 @@
+[project]
+name = "benchbrew"
+version = "0.1.0"
+description = "Spec-derived, zero-LLM agent evaluation environment generator"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
