@@ -238,7 +238,7 @@ class TestEmitter(unittest.TestCase):
             tj = json.loads((data / "tasks.json").read_text())
             self.assertEqual(len(tj), 4)
             self.assertIn("initialization_data", tj[0]["initial_state"])
-            self.assertIn("seller_floor", json.dumps(tj))
+            self.assertIn("accept_at", json.dumps(tj))  # ctx promoted to DB state
 
 
 if __name__ == "__main__":
