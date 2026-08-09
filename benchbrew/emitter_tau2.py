@@ -33,6 +33,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import keyword
 import re
 from pathlib import Path
 
@@ -91,11 +92,14 @@ def _tool_param_lines(spec: DomainSpec, tool: str) -> tuple[str, str]:
     sig, args = [], []
     for pname, ptype in params.items():
         t = _py_type(ptype)
+        # keyword params (travel's 'from') become from_ in the signature;
+        # the args dict keeps the spec's name so the impl reads args['from']
+        sig_name = pname + "_" if keyword.iskeyword(pname) else pname
         if type(None) in getattr(ptype, "__args__", ()):
-            sig.append(f"{pname}: {t} = None")
+            sig.append(f"{sig_name}: {t} = None")
         else:
-            sig.append(f"{pname}: {t}")
-        args.append(f'"{pname}": {pname}')
+            sig.append(f"{sig_name}: {t}")
+        args.append(f'"{pname}": {sig_name}')
     return ", ".join(sig), ", ".join(args)
 
 
@@ -155,7 +159,7 @@ def _gen_data_model(spec: DomainSpec) -> str:
         "",
         "from typing import Any, Optional",
         "",
-        "from pydantic import BaseModel",
+        "from pydantic import BaseModel, Field",
         "",
         "from tau2.environment.db import DB",
         "",
@@ -171,7 +175,14 @@ def _gen_data_model(spec: DomainSpec) -> str:
             default = ""
             if type(None) in getattr(ftype, "__args__", ()):
                 default = " = None"
-            lines.append(f"    {fname}: {_py_type(ftype)}{default}")
+            # Python keywords can't be pydantic field names (e.g. the
+            # travel spec's 'from'); alias the keyword, keep the data key
+            if keyword.iskeyword(fname):
+                lines.append(
+                    f'    {fname}_: {_py_type(ftype)} = '
+                    f'Field({default.lstrip(" = ") or "None"}, alias="{fname}")')
+            else:
+                lines.append(f"    {fname}: {_py_type(ftype)}{default}")
         lines.append("")
     lines += [
         f"class {cap}DB(DB):",
