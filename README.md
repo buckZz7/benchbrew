@@ -112,6 +112,18 @@ cd /path/to/tau2-bench && tau2 run --domain marketplace --agent-llm ...
 
 37 tests, GPU-free (scripted agents prove the loop without any model).
 
+## Freshness (the anti-memorization protocol)
+
+A lane's task pool is regenerated per eval, not fixed. Pilsner's runner
+takes a public seed (`PILSNER_BENCHBREW_SEED`), re-emits the domain bundle
+from `(spec, seed)` before each battery, and records the provenance in the
+receipt: spec version + hash, seed, and the bundle sha256, alongside the
+sampled task ids. Anyone can run `python3 -m benchbrew --seed N --tasks M
+--quiet` and regenerate the exact tasks a model was scored on — nothing
+hidden, everything verifiable. Because the pool is unbounded (archetypes ×
+seeds), memorizing one bundle buys nothing for the next: freshness without
+secrecy.
+
 ## Adding a platform or domain
 
 Follow the gated procedure in the `benchbrew-domain-authoring` skill: research
