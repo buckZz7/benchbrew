@@ -1,24 +1,44 @@
 """τ²-domain emitter: (spec, seed, tasks, world) -> a COMPLETE runnable τ²
-domain package, so Pilsner's harness (`tau2 run --domain marketplace`) can
-execute BenchBrew bundles directly.
+domain package, so Pilsner's harness (`tau2 run --domain <name>`) can execute
+ANY BenchBrew bundle directly.
 
 The emitted package is self-contained inside tau2-bench:
-  src/tau2/domains/marketplace/   data_model.py, tools.py, environment.py,
-                                  utils.py, __init__.py
-  data/tau2/domains/marketplace/  tasks.json, db.json, split_tasks.json, policy.md
+  src/tau2/domains/<name>/   data_model.py, tools.py, environment.py,
+                             utils.py, spec_code.py, compat.py, __init__.py
+  data/tau2/domains/<name>/  tasks.json, db.json, split_tasks.json, policy.md
 
-Trust properties preserved: the oracle is DB-state predicates (the generated
-tools enforce policy from world state; no LLM anywhere). ctx values are
-PROMOTED into DB state (floor -> listing.seller_floor, accept threshold ->
-listing.accept_at) so policy is enforced purely from the world, not hidden
-task metadata.
+GENERIC by construction: the domain's own module source is embedded
+(spec_code.py + a compat shim for the benchbrew.spec names it imports) and
+the τ² adapter is generated from the spec metadata:
+  - data_model.py  <- EntitySpec fields -> pydantic models + a DB whose
+                      `collections: dict[str, dict[str, dict]]` stores raw
+                      dicts so the spec's in-place world mutations persist
+  - tools.py       <- ToolSpec params -> @is_tool signatures; bodies run the
+                      spec's OWN rules + impls against a dict-interface view
+                      of the DB (the oracle is the spec's rule set, not a
+                      re-translation)
+  - environment.py <- tasks.json + per-task env_assertions whose tools call
+                      the spec's OWN goal functions
+  - ctx promotion  <- each task's ctx is embedded as a synthetic `_ctx`
+                      collection in that task's world, so policy AND goals
+                      read task parameters from world state (the marketplace
+                      "floor -> listing.seller_floor" pattern, generalized)
+
+Trust properties preserved: zero LLM anywhere; the oracle is DB-state
+predicates from the spec itself; determinism comes from (spec, seed).
 """
+
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
+import re
 from pathlib import Path
 
 from .spec import DomainSpec, World
+
+_IMPORT_RE = re.compile(r"^from benchbrew\.spec import .*$", re.M)
 
 
 def _py_type(t) -> str:
@@ -30,786 +50,359 @@ def _py_type(t) -> str:
         return "float"
     if t is bool:
         return "bool"
-    return "Optional[str]" if type(None) in getattr(t, "__args__", ()) else "str"
+    if type(None) in getattr(t, "__args__", ()):
+        return f"Optional[{_py_type(next(a for a in t.__args__ if a is not type(None)))}]"
+    if t is list:
+        return "list"
+    if getattr(t, "__origin__", None) is list:
+        return f"list[{_py_type(t.__args__[0])}]"
+    return "str"
 
 
-def _assertion_for(t: dict) -> dict | None:
-    """Map a task to its spec-derived env assertion (mirror of the goal fn).
-    Returns {'func_name': ..., 'arguments': {...}} or None."""
-    ctx = t["ctx"]
-    a = t["archetype"]
-    if a == "sell_list_close":
-        return {"func_name": "assert_sell_list_close_ok",
-                "arguments": {"buyer_id": ctx["buyer"], "floor": ctx["floor"]}}
-    if a == "sell_create_listing":
-        return {"func_name": "assert_sell_create_listing_ok",
-                "arguments": {"title": ctx["item"], "category": ctx["category"],
-                              "price": ctx["price"], "condition": ctx["condition"]}}
-    if a == "sell_reject_lowball":
-        offer_id = next(e["offer_id"] for e in t["inbox"]
-                        if e["type"] == "offer" and e["amount"] == ctx["lowball"])
-        return {"func_name": "assert_sell_reject_lowball_ok",
-                "arguments": {"offer_id": offer_id, "floor": ctx["floor"]}}
-    if a == "buy_negotiate":
-        return {"func_name": "assert_buy_negotiate_ok",
-                "arguments": {"listing_id": ctx["listing_id"], "budget": ctx["budget"]}}
-    if a == "buy_avoid_scam":
-        return {"func_name": "assert_buy_avoid_scam_ok",
-                "arguments": {"scam_seller_id": ctx["scam_seller_id"]}}
-    if a == "sell_expiring_offer":
-        return {"func_name": "assert_sell_expiring_offer_ok",
-                "arguments": {"buyer_id": ctx["buyer"], "floor": ctx["floor"]}}
-    if a == "sell_scam_variant":
-        return {"func_name": "assert_sell_scam_variant_ok",
-                "arguments": {"scammer": ctx["scammer"]}}
-    if a == "sell_refund_math":
-        return {"func_name": "assert_sell_refund_math_ok",
-                "arguments": {"order_id": ctx["order_id"], "buyer": ctx["buyer"],
-                              "price": ctx["price"], "fee": ctx["fee"],
-                              "buyer_before": ctx["buyer_before"],
-                              "seller_before": ctx["seller_before"]}}
-    if a == "buy_late_dispute":
-        return {"func_name": "assert_buy_late_dispute_ok", "arguments": {}}
-    if a == "sell_ship_on_time":
-        return {"func_name": "assert_sell_ship_on_time_ok", "arguments": {}}
-    if a == "sell_full_inbox":
-        return {"func_name": "assert_sell_full_inbox_ok",
-                "arguments": {"legit_buyer": ctx["legit_buyer"], "floor": ctx["floor"],
-                              "scam_buyer": ctx["scam_buyer"]}}
-    if a == "buy_negotiate_rounds":
-        return {"func_name": "assert_buy_negotiate_rounds_ok",
-                "arguments": {"listing_id": ctx["listing_id"], "budget": ctx["budget"]}}
-    return None
+def _spec_source(spec: DomainSpec) -> str:
+    """Return the domain module's source with the benchbrew.spec import
+    rewritten to the emitted compat shim."""
+    first_goal = next(iter(spec.archetypes.values()))["goal"]
+    mod = importlib.import_module(first_goal.__module__)
+    src = inspect.getsource(mod)
+    src = _IMPORT_RE.sub("from .compat import DomainSpec, EntitySpec, "
+                         "PolicyError, ToolSpec, World", src)
+    return src
 
 
-def _promote_ctx(ctx: dict, world: dict) -> None:
-    """Push task ctx into DB state so the generated tools can enforce policy
-    from the world alone."""
-    lid = ctx.get("listing_id") or ctx.get("target_listing_id")
-    if lid and lid in world.get("listings", {}):
-        if "floor" in ctx:
-            world["listings"][lid]["seller_floor"] = ctx["floor"]
-        if "accept_at" in ctx:
-            world["listings"][lid]["accept_at"] = ctx["accept_at"]
+def _goal_fn_names(spec: DomainSpec) -> dict[str, str]:
+    out = {}
+    for name, arch in spec.archetypes.items():
+        out[name] = arch["goal"].__name__
+    return out
+
+
+def _rule_names(spec: DomainSpec) -> dict[str, str]:
+    return {name: fn.__name__ for name, fn in spec.rules.items()}
+
+
+def _impl_names(spec: DomainSpec) -> dict[str, str]:
+    return {name: fn.__name__ for name, fn in spec.tool_impls.items()}
+
+
+def _tool_param_lines(spec: DomainSpec, tool: str) -> tuple[str, str]:
+    """Generate the method signature params and the args dict for a tool."""
+    params = spec.tools[tool].params
+    sig, args = [], []
+    for pname, ptype in params.items():
+        t = _py_type(ptype)
+        if type(None) in getattr(ptype, "__args__", ()):
+            sig.append(f"{pname}: {t} = None")
+        else:
+            sig.append(f"{pname}: {t}")
+        args.append(f'"{pname}": {pname}')
+    return ", ".join(sig), ", ".join(args)
 
 
 # ---------------------------------------------------------------------------
-# data_model.py
+# Generated package files
 # ---------------------------------------------------------------------------
 
-_DM_TEMPLATE = '''"""Marketplace domain data models. GENERATED by BenchBrew (do not edit)."""
+_COMPAT_TEMPLATE = '''"""Compatibility shim so the embedded spec module imports standalone.
+GENERATED by BenchBrew (do not edit)."""
+
 from __future__ import annotations
 
-from typing import Optional
 
-from pydantic import BaseModel, Field
-
-from tau2.environment.db import DB
+class PolicyError(Exception):
+    """A policy violation — the oracle's verdict on a tool call."""
 
 
-class User(BaseModel):
-    id: str
-    name: str
-    trust: float
-    transactions: int = 0
-    defects: int = 0
-    late_shipments: int = 0
+class World:
+    """Minimal dict-interface world matching benchbrew.spec.World."""
+
+    def __init__(self) -> None:
+        self._collections: dict = {}
+        self.tick: int = 0
+
+    def get(self, name: str) -> dict:
+        return self._collections.setdefault(name, {})
+
+    def setdefault(self, name: str, val=None) -> dict:
+        return self._collections.setdefault(name, {} if val is None else val)
+
+    def clone(self):
+        import copy
+        return copy.deepcopy(self)
 
 
-class Listing(BaseModel):
-    id: str
-    seller_id: str
-    title: str
-    category: str
-    price: int
-    condition: str
-    status: str = "active"
-    seller_floor: Optional[int] = None  # promoted from task ctx
-    accept_at: Optional[int] = None     # promoted from task ctx
+class EntitySpec:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
 
 
-class Offer(BaseModel):
-    id: str
-    listing_id: str
-    buyer_id: str
-    amount: int
-    status: str = "pending"
-    created_at_tick: int = 0
+class ToolSpec:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
 
 
-class Message(BaseModel):
-    id: str
-    to: str
-    sender: str
-    text: str
-    kind: str = "regular"
-    flagged: bool = False
-
-
-class Order(BaseModel):
-    id: str
-    listing_id: str
-    buyer_id: str
-    seller_id: str
-    price: int
-    fee: int
-    status: str = "paid"
-    label_id: Optional[str] = None
-    created_at_tick: int = 0
-    delivered_at_tick: Optional[int] = None
-    refunded_at_tick: Optional[int] = None
-
-
-class Dispute(BaseModel):
-    id: str
-    order_id: str
-    reason: str
-    status: str = "open"
-
-
-class Wallet(BaseModel):
-    user_id: str
-    balance: int
-
-
-class Request(BaseModel):
-    id: str
-    question: str
-    resolved: bool = False
-
-
-class MarketplaceDB(DB):
-    tick: int = 0
-    users: dict[str, User]
-    listings: dict[str, Listing]
-    offers: dict[str, Offer]
-    messages: dict[str, Message]
-    orders: dict[str, Order]
-    disputes: dict[str, Dispute]
-    wallet: dict[str, Wallet]
-    requests: dict[str, Request]
+class DomainSpec:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
 '''
 
-# ---------------------------------------------------------------------------
-# tools.py — the generated toolkit. Rules (the oracle) are enforced inline.
-# ---------------------------------------------------------------------------
 
-_TOOLS_TEMPLATE = '''"""Marketplace domain toolkit. GENERATED by BenchBrew (do not edit).
+def _gen_data_model(spec: DomainSpec) -> str:
+    cap = spec.name.replace("_", " ").title().replace(" ", "")
+    lines = [
+        f'"""{cap} domain data models. GENERATED by BenchBrew (do not edit)."""',
+        "from __future__ import annotations",
+        "",
+        "from typing import Any, Optional",
+        "",
+        "from pydantic import BaseModel",
+        "",
+        "from tau2.environment.db import DB",
+        "",
+    ]
+    for coll, ent in spec.entities.items():
+        model = coll.title().replace("_", "")
+        lines.append(f"class {model}(BaseModel):")
+        if not ent.fields:
+            lines.append("    pass")
+            lines.append("")
+            continue
+        for fname, ftype in ent.fields.items():
+            default = ""
+            if type(None) in getattr(ftype, "__args__", ()):
+                default = " = None"
+            lines.append(f"    {fname}: {_py_type(ftype)}{default}")
+        lines.append("")
+    lines += [
+        f"class {cap}DB(DB):",
+        "    tick: int = 0",
+        "    # task parameters (promoted ctx) — the oracle reads task state",
+        "    # from the world, never from hidden metadata",
+        "    task_ctx: dict[str, Any] = {}",
+    ]
+    for coll in spec.entities:
+        lines.append(f"    {coll}: dict[str, dict] = {{}}")
+    lines.append("")
+    return "\n".join(lines)
 
-Policy snapshot: %%SNAPSHOT%% (%%MEDIATION%% mediation).
-Rules and their sources (GROUNDING.md):
-%%RULE_SOURCES%%
-"""
-from __future__ import annotations
 
-from tau2.domains.marketplace.data_model import (
-    Listing,
-    MarketplaceDB,
-    Message,
-    Offer,
-    Order,
-    Request,
-    Wallet,
-)
-from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
-
-# Policy snapshot %%SNAPSHOT%%
-FEE_PERCENT = %%FEE_PERCENT%%
-FEE_FIXED = %%FEE_FIXED%%
-PROTECTION_WINDOW = %%PROTECTION_WINDOW%%
-OFFER_EXPIRY = %%OFFER_EXPIRY%%
-HANDLING_WINDOW = %%HANDLING_WINDOW%%
-TRS_DISCOUNT = %%TRS_DISCOUNT%%
-
-
-class MarketplaceTools(ToolKitBase):
-    """Tools for the second-hand marketplace (buy/sell concierge)."""
-
-    db: MarketplaceDB
-
-    def __init__(self, db: MarketplaceDB) -> None:
-        super().__init__(db)
-
-    def _tick(self) -> int:
-        return self.db.tick
-
-    def _bump_tick(self) -> None:
-        self.db.tick += 1
-
-    def _seller_level(self, uid: str) -> str:
-        user = self.db.users.get(uid)
-        if user is None or user.transactions < 10:
-            return "above_standard"
-        defect_rate = user.defects / user.transactions
-        late_rate = user.late_shipments / user.transactions
-        if defect_rate <= 0.005 and late_rate <= 0.03:
-            return "top_rated"
-        return "above_standard"
-
-    def _fee_for(self, seller_id: str, price: int) -> int:
-        fee = round(price * FEE_PERCENT + FEE_FIXED)
-        if self._seller_level(seller_id) == "top_rated":
-            fee = round(fee * (1 - TRS_DISCOUNT))
-        return fee
-
-    def _get_listing(self, listing_id: str) -> Listing:
-        if listing_id not in self.db.listings:
-            raise ValueError(f"listing {listing_id} not found")
-        return self.db.listings[listing_id]
-
-    def _get_offer(self, offer_id: str) -> Offer:
-        if offer_id not in self.db.offers:
-            raise ValueError(f"offer {offer_id} not found")
-        return self.db.offers[offer_id]
-
-    # -- read tools ---------------------------------------------------------
-
-    @is_tool(ToolType.READ)
-    def search_listings(self, query: str) -> list[dict]:
-        """Search active listings by title or category keyword.
-
-        Args:
-            query: the search keyword.
-
-        Returns:
-            A list of active listings matching the keyword.
-        """
-        q = query.lower()
-        return [
-            l.model_dump()
-            for l in self.db.listings.values()
-            if l.status == "active" and (q in l.title.lower() or q in l.category.lower())
+def _gen_tools(spec: DomainSpec) -> str:
+    cap = spec.name.replace("_", " ").title().replace(" ", "")
+    plat = getattr(spec, "platform", None) or {}
+    rule_lines = "\n".join(f"# {k}: {v}" for k, v in spec.rule_sources.items())
+    lines = [
+        f'"""{cap} domain toolkit. GENERATED by BenchBrew (do not edit).',
+        "",
+        f"Policy snapshot: {plat.get('snapshot', 'see policy.md')} "
+        f"({plat.get('mediation', '?')} mediation).",
+        "Rules (the oracle) and their sources:",
+        rule_lines,
+        '"""',
+        "from __future__ import annotations",
+        "",
+        "from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool",
+        "",
+        f"from .data_model import {cap}DB",
+        "from .spec_code import (",
+    ]
+    imports = []
+    for name, fn in _rule_names(spec).items():
+        imports.append(f"    {fn} as _rule_{name},")
+    for name, fn in _impl_names(spec).items():
+        imports.append(f"    {fn} as _impl_{name},")
+    for arch, fn in _goal_fn_names(spec).items():
+        imports.append(f"    {fn} as _goal_{arch},")
+    lines += imports + [")", "", "", "class _View:", "    \"\"\"Dict-interface world view over the DB (matches benchbrew World).\"\"\"",
+        "",
+        "    def __init__(self, db) -> None:",
+        "        self.db = db",
+        "",
+        "    @property",
+        "    def tick(self) -> int:",
+        "        return self.db.tick",
+        "",
+        "    def get(self, name: str) -> dict:",
+        '        if name == "_ctx":',
+        "            return self.db.task_ctx",
+        "        if not hasattr(self.db, name):",
+        "            setattr(self.db, name, {})",
+        "        return getattr(self.db, name)",
+        "",
+        "    def setdefault(self, name: str, val=None) -> dict:",
+        '        return self.get(name) if val is None else val',
+        "",
+        "",
+        f"class {cap}Tools(ToolKitBase):",
+        f'    """Tools for the {spec.name} domain."""',
+        "",
+        f"    db: {cap}DB",
+        "",
+        f"    def __init__(self, db: {cap}DB) -> None:",
+        "        super().__init__(db)",
+        "",
+        "    _RULES = [",
+    ]
+    for name in spec.rules:
+        lines.append(f"        _rule_{name},")
+    lines += [
+        "    ]",
+        "",
+        "    _IMPLS = {",
+    ]
+    for name in spec.tool_impls:
+        lines.append(f'        "{name}": _impl_{name},')
+    lines += [
+        "    }",
+        "",
+        "    _WRITES = {",
+    ]
+    for name, ts in spec.tools.items():
+        if ts.kind == "write":
+            lines.append(f'        "{name}",')
+    lines += [
+        "    }",
+        "",
+        "    def _run(self, name: str, args: dict) -> dict:",
+        "        view = _View(self.db)",
+        '        ctx = view.get("_ctx")',
+        "        for rule in self._RULES:",
+        "            rule(view, name, args, ctx)",
+        "        out = self._IMPLS[name](view, args, ctx)",
+        "        if name in self._WRITES:",
+        "            self.db.tick += 1",
+        "        return out",
+        "",
+    ]
+    # one @is_tool method per ToolSpec
+    for name, ts in spec.tools.items():
+        kind = "READ" if ts.kind == "read" else "WRITE"
+        sig, args = _tool_param_lines(spec, name)
+        doc = (ts.desc or name).replace("\n", " ")
+        lines += [
+            f"    @is_tool(ToolType.{kind})",
+            f"    def {name}(self{sig and ', ' + sig}):",
+            f'        """{doc}',
+            "",
+            "        Returns:",
+            "            The tool result.",
+            '        """',
+            f"        return self._run({json.dumps(name)}, {{{args}}})",
+            "",
         ]
-
-    @is_tool(ToolType.READ)
-    def get_listing(self, listing_id: str) -> dict:
-        """Get one listing by id.
-
-        Args:
-            listing_id: the listing id, such as 'l1'.
-
-        Returns:
-            The listing details.
-        """
-        return self._get_listing(listing_id).model_dump()
-
-    @is_tool(ToolType.READ)
-    def get_wallet(self) -> dict:
-        """Get Alex's wallet balance.
-
-        Returns:
-            The wallet balance.
-        """
-        if "me" not in self.db.wallet:
-            raise ValueError("user me not found")
-        return self.db.wallet["me"].model_dump()
-
-    @is_tool(ToolType.READ)
-    def get_inbox(self) -> dict:
-        """Get Alex's pending offers, messages, and orders — the inbox.
-
-        Returns:
-            A dict with pending offers (on or from Alex), messages to Alex,
-            and open orders (paid/shipped/delivered).
-        """
-        my_offers = [
-            o.model_dump() for o in self.db.offers.values()
-            if o.status == "pending"
-            and (o.buyer_id == "me"
-                 or self.db.listings.get(o.listing_id) is not None
-                 and self.db.listings[o.listing_id].seller_id == "me")
+    # assertion tools: one per archetype, running the spec's own goal fn
+    for arch in spec.archetypes:
+        lines += [
+            "    @is_tool(ToolType.READ)",
+            f"    def assert_{arch}_ok(self) -> bool:",
+            '        """Spec-derived assertion (mirror of the goal fn)."""',
+            "        view = _View(self.db)",
+            f'        ok, _ = _goal_{arch}(view, view.get("_ctx"))',
+            "        return ok",
+            "",
         ]
-        my_msgs = [m.model_dump() for m in self.db.messages.values()
-                   if m.to == "me"]
-        my_orders = [
-            o.model_dump() for o in self.db.orders.values()
-            if o.status in ("paid", "shipped", "delivered")
-            and (o.seller_id == "me" or o.buyer_id == "me")
-        ]
-        return {"offers": my_offers, "messages": my_msgs, "orders": my_orders}
-
-    # -- write tools (rules enforced before mutation; tick advances) --------
-
-    @is_tool(ToolType.WRITE)
-    def list_item(self, title: str, category: str, price: int,
-                  condition: str) -> dict:
-        """Create a new active listing for Alex.
-
-        Args:
-            title: the item title.
-            category: the item category.
-            price: the list price in dollars.
-            condition: the item condition (Pre-owned - Excellent/Good/Fair).
-
-        Returns:
-            The created listing.
-        """
-        price = int(price)
-        lid = f"l{{len(self.db.listings) + 1}}"
-        rec = Listing(id=lid, seller_id="me", title=title,
-                      category=category, price=price, condition=condition,
-                      status="active")
-        self.db.listings[lid] = rec
-        self._bump_tick()
-        return rec.model_dump()
-
-    @is_tool(ToolType.WRITE)
-    def make_offer(self, listing_id: str, amount: int) -> dict:
-        """Make an offer as Alex; at or above the listing's accept threshold
-        it is accepted instantly and becomes an order (Buy-It-Now shape).
-
-        Args:
-            listing_id: the listing id.
-            amount: the offer amount in dollars.
-
-        Returns:
-            The created offer.
-        """
-        listing = self._get_listing(listing_id)
-        amount = int(amount)
-        oid = f"o{{len(self.db.offers) + 1}}"
-        rec = Offer(id=oid, listing_id=listing_id, buyer_id="me",
-                    amount=amount, status="pending", created_at_tick=self._tick())
-        self.db.offers[oid] = rec
-        if listing.accept_at is not None and amount >= listing.accept_at:
-            rec.status = "accepted"
-            self._create_order(listing, buyer_id, amount)
-        self._bump_tick()
-        return rec.model_dump()
-
-    @is_tool(ToolType.WRITE)
-    def respond_offer(self, offer_id: str, action: str, amount: int | None = None) -> dict:
-        """Accept, decline, or counter (with amount) an offer.
-
-        Args:
-            offer_id: the offer id, such as 'o1'.
-            action: 'accept', 'decline', or 'counter'.
-            amount: required for 'counter' — the counter price.
-
-        Returns:
-            The updated offer (or the new counter offer).
-        """
-        offer = self._get_offer(offer_id)
-        # -- rules (the oracle) ----------------------------------------------
-        if self._tick() - offer.created_at_tick >= OFFER_EXPIRY:
-            raise ValueError(f"offer {offer_id} has expired (24h window)")
-        if action == "accept":
-            listing = self._get_listing(offer.listing_id)
-            if listing.seller_floor is not None and offer.amount < listing.seller_floor:
-                raise ValueError(
-                    f"offer {offer.amount} is below the owner's floor {listing.seller_floor}")
-            flagged = [
-                m for m in self.db.messages.values()
-                if m.sender == offer.buyer_id and m.flagged and m.kind == "scam"
-            ]
-            if flagged:
-                raise ValueError("buyer has a flagged scam message; do not transact")
-            wallet = self.db.wallet.get(offer.buyer_id)
-            if wallet is not None and wallet.balance < offer.amount:
-                raise ValueError("buyer has insufficient funds")
-        # -- mutation ---------------------------------------------------------
-        if action == "accept":
-            offer.status = "accepted"
-            self._create_order(self._get_listing(offer.listing_id),
-                               offer.buyer_id, offer.amount)
-            self._bump_tick()
-            return offer.model_dump()
-        if action == "decline":
-            offer.status = "declined"
-            self._bump_tick()
-            return offer.model_dump()
-        if action == "counter":
-            offer.status = "declined"
-            nid = f"o{{len(self.db.offers) + 1}}"
-            new = Offer(id=nid, listing_id=offer.listing_id,
-                        buyer_id=offer.buyer_id, amount=int(amount),
-                        status="pending", created_at_tick=self._tick())
-            self.db.offers[nid] = new
-            self._bump_tick()
-            return new.model_dump()
-        raise ValueError(f"bad action: {action}")
-
-    @is_tool(ToolType.WRITE)
-    def send_message(self, to: str, text: str, kind: str | None = None) -> dict:
-        """Send a message to a user.
-
-        Args:
-            to: the recipient user id.
-            text: the message text.
-            kind: optional message kind.
-
-        Returns:
-            The created message.
-        """
-        mid = f"m{{len(self.db.messages) + 1}}"
-        rec = Message(id=mid, to=to, sender="me", text=text,
-                      kind=kind or "regular", flagged=False)
-        self.db.messages[mid] = rec
-        self._bump_tick()
-        return rec.model_dump()
-
-    @is_tool(ToolType.WRITE)
-    def flag_message(self, message_id: str) -> dict:
-        """Mark a message as a scam.
-
-        Args:
-            message_id: the message id, such as 'm1'.
-
-        Returns:
-            Confirmation.
-        """
-        if message_id not in self.db.messages:
-            raise ValueError(f"message {message_id} not found")
-        self.db.messages[message_id].flagged = True
-        self._bump_tick()
-        return {"flagged": True}
-
-    @is_tool(ToolType.WRITE)
-    def ship_order(self, order_id: str) -> dict:
-        """Ship a paid order (platform label). Late shipments (beyond the
-        2h handling window) count against the seller's rating.
-
-        Args:
-            order_id: the order id, such as 'ord1'.
-
-        Returns:
-            Shipping confirmation with the label id.
-        """
-        if order_id not in self.db.orders:
-            raise ValueError(f"order {order_id} not found")
-        order = self.db.orders[order_id]
-        order.status = "shipped"
-        order.label_id = f"label-{order_id}"
-        seller = self.db.users.get(order.seller_id)
-        if seller is not None and self._tick() - order.created_at_tick > HANDLING_WINDOW:
-            seller.late_shipments += 1
-        wallet = self.db.wallet.get(order.seller_id)
-        if wallet is not None:
-            wallet.balance += order.price - order.fee
-        self._bump_tick()
-        return {"status": "shipped", "label_id": order.label_id}
-
-    @is_tool(ToolType.WRITE)
-    def confirm_delivery(self, order_id: str) -> dict:
-        """Confirm delivery of a shipped order.
-
-        Args:
-            order_id: the order id.
-
-        Returns:
-            Delivery confirmation.
-        """
-        if order_id not in self.db.orders:
-            raise ValueError(f"order {order_id} not found")
-        order = self.db.orders[order_id]
-        order.status = "delivered"
-        order.delivered_at_tick = self._tick()
-        self._bump_tick()
-        return {"status": "delivered"}
-
-    @is_tool(ToolType.WRITE)
-    def open_dispute(self, order_id: str, reason: str) -> dict:
-        """Open a dispute on a delivered order within the 30-day protection
-        window.
-
-        Args:
-            order_id: the order id.
-            reason: the dispute reason.
-
-        Returns:
-            The created dispute.
-        """
-        if order_id not in self.db.orders:
-            raise ValueError(f"order {order_id} not found")
-        order = self.db.orders[order_id]
-        if order.status != "delivered":
-            raise ValueError("disputes only on delivered orders")
-        if order.delivered_at_tick is not None and \\
-                self._tick() - order.delivered_at_tick > PROTECTION_WINDOW:
-            raise ValueError("protection window (30 days) has closed")
-        did = f"d{{len(self.db.disputes) + 1}}"
-        self.db.disputes[did] = Dispute(id=did, order_id=order_id,
-                                        reason=reason, status="open")
-        order.status = "disputed"
-        self._bump_tick()
-        return {"dispute_id": did}
-
-    @is_tool(ToolType.WRITE)
-    def ask_owner(self, question: str) -> dict:
-        """Ask Alex for a decision; recorded in the world.
-
-        Args:
-            question: the question to ask Alex.
-
-        Returns:
-            The recorded request id.
-        """
-        rid = f"r{{len(self.db.requests) + 1}}"
-        self.db.requests[rid] = Request(id=rid, question=question, resolved=False)
-        self._bump_tick()
-        return {"request_id": rid}
-
-    @is_tool(ToolType.WRITE)
-    def refund_order(self, order_id: str, amount: int) -> dict:
-        """Refund a delivered order within the 30-day protection window.
-
-        A FULL refund (amount == order price) credits the final-value fee
-        back to the seller; partial refunds carry no fee credit.
-
-        Args:
-            order_id: the order id, such as 'ord0'.
-            amount: the refund amount (never more than the order price).
-
-        Returns:
-            The refunded order status and amount.
-        """
-        order = self.db.orders.get(order_id)
-        if order is None:
-            raise ValueError(f"order {order_id} not found")
-        if order.status != "delivered":
-            raise ValueError(f"order {order_id} is not delivered")
-        now = self._tick()
-        if now - order.delivered_at_tick > PLATFORM["protection_window"]:
-            raise ValueError("protection window closed (30 days after delivery)")
-        amount = int(amount)
-        if amount > order.price:
-            raise ValueError("refund cannot exceed the order price")
-        if order.buyer_id in self.db.wallet:
-            self.db.wallet[order.buyer_id].balance += amount
-        seller_credit = order.fee if amount == order.price else 0
-        if order.seller_id in self.db.wallet:
-            self.db.wallet[order.seller_id].balance -= amount - seller_credit
-        order.status = "refunded"
-        order.refunded_at_tick = now
-        self._bump_tick()
-        return {"status": "refunded", "refunded_amount": amount}
-
-    # -- internals -----------------------------------------------------------
-
-    def _create_order(self, listing: Listing, buyer_id: str, price: int) -> None:
-        oid = f"ord{{len(self.db.orders) + 1}}"
-        fee = self._fee_for(listing.seller_id, price)
-        rec = Order(id=oid, listing_id=listing.id, buyer_id=buyer_id,
-                    seller_id=listing.seller_id, price=price, fee=fee,
-                    status="paid", created_at_tick=self._tick())
-        self.db.orders[oid] = rec
-        wallet = self.db.wallet.get(buyer_id)
-        if wallet is not None:
-            wallet.balance -= price
-        listing.status = "sold"
-
-    # -- env assertions (the spec-derived oracle; return bool) ---------------
-
-    def _norm_condition(self, c: str) -> str:
-        return c.lower().replace("pre-owned", "").replace("-", "").strip()
-
-    @is_tool(ToolType.READ)
-    def assert_sell_list_close_ok(self, buyer_id: str, floor: int) -> bool:
-        """True if an order from buyer_id at/above floor exists AND a scam
-        message is flagged."""
-        has_order = any(
-            o.seller_id == "me" and o.buyer_id == buyer_id and o.price >= floor
-            for o in self.db.orders.values())
-        flagged = any(m.flagged and m.kind == "scam" for m in self.db.messages.values())
-        return has_order and flagged
-
-    @is_tool(ToolType.READ)
-    def assert_sell_create_listing_ok(self, title: str, category: str,
-                                      price: int, condition: str) -> bool:
-        """True if a matching active listing exists for Alex."""
-        price = int(price)
-        return any(
-            l.seller_id == "me" and l.title == title and l.category == category
-            and l.price == price and l.status == "active"
-            and self._norm_condition(l.condition) == self._norm_condition(condition)
-            for l in self.db.listings.values())
-
-    @is_tool(ToolType.READ)
-    def assert_sell_reject_lowball_ok(self, offer_id: str, floor: int) -> bool:
-        """True if the lowball offer was responded to (declined/countered)
-        or Alex was asked via ask_owner."""
-        offer = self.db.offers.get(offer_id)
-        responded = offer is not None and offer.status in ("declined", "accepted")
-        return responded or bool(self.db.requests)
-
-    @is_tool(ToolType.READ)
-    def assert_buy_negotiate_ok(self, listing_id: str, budget: int) -> bool:
-        """True if an order exists for Alex on the listing within budget."""
-        return any(
-            o.buyer_id == "me" and o.listing_id == listing_id and o.price <= budget
-            for o in self.db.orders.values())
-
-    @is_tool(ToolType.READ)
-    def assert_buy_avoid_scam_ok(self, scam_seller_id: str) -> bool:
-        """True if no order was placed with the scam seller and their
-        message is flagged."""
-        no_order = not any(
-            o.seller_id == scam_seller_id and o.buyer_id == "me"
-            for o in self.db.orders.values())
-        flagged = any(
-            m.flagged and m.kind == "scam" and m.sender == scam_seller_id
-            for m in self.db.messages.values())
-        return no_order and flagged
-
-    @is_tool(ToolType.READ)
-    def assert_sell_expiring_offer_ok(self, buyer_id: str, floor: int) -> bool:
-        """True if the near-expiry offer became an order at/above floor."""
-        return any(
-            o.seller_id == "me" and o.buyer_id == buyer_id and o.price >= floor
-            for o in self.db.orders.values())
-
-    @is_tool(ToolType.READ)
-    def assert_buy_late_dispute_ok(self) -> bool:
-        """True if no dispute was opened (window had closed)."""
-        return len(self.db.disputes) == 0
-
-    @is_tool(ToolType.READ)
-    def assert_sell_ship_on_time_ok(self) -> bool:
-        """True if all orders shipped and Alex kept Top Rated."""
-        all_shipped = all(o.status == "shipped" for o in self.db.orders.values())
-        return all_shipped and self._seller_level("me") == "top_rated"
-
-    @is_tool(ToolType.READ)
-    def assert_sell_full_inbox_ok(self, legit_buyer: str, floor: int,
-                                  scam_buyer: str) -> bool:
-        """True if the full inbox was handled: legit order at/above floor,
-        no below-floor order, no order from the scammer, scam flagged."""
-        has_legit = any(
-            o.seller_id == "me" and o.buyer_id == legit_buyer and o.price >= floor
-            for o in self.db.orders.values())
-        no_below = not any(
-            o.seller_id == "me" and o.price < floor for o in self.db.orders.values())
-        no_scam = not any(
-            o.seller_id == "me" and o.buyer_id == scam_buyer
-            for o in self.db.orders.values())
-        flagged = any(m.flagged and m.kind == "scam" for m in self.db.messages.values())
-        return has_legit and no_below and no_scam and flagged
-
-    @is_tool(ToolType.READ)
-    def assert_buy_negotiate_rounds_ok(self, listing_id: str, budget: int) -> bool:
-        """True if a negotiation round ended in an order within budget."""
-        return any(
-            o.buyer_id == "me" and o.listing_id == listing_id and o.price <= budget
-            for o in self.db.orders.values())
-
-    @is_tool(ToolType.READ)
-    def assert_sell_scam_variant_ok(self, scammer: str) -> bool:
-        """True if the overpayment scam was flagged and no order exists
-        with the scammer."""
-        no_order = not any(
-            o.seller_id == "me" and o.buyer_id == scammer
-            for o in self.db.orders.values())
-        flagged = any(
-            m.flagged and m.kind == "scam" and m.sender == scammer
-            for m in self.db.messages.values())
-        return no_order and flagged
-
-    @is_tool(ToolType.READ)
-    def assert_sell_refund_math_ok(self, order_id: str, buyer: str, price: int,
-                                   fee: int, buyer_before: int,
-                                   seller_before: int) -> bool:
-        """True if the order was fully refunded with exact money movement:
-        buyer back to full price, seller net of price minus the fee credit."""
-        order = self.db.orders.get(order_id)
-        if order is None or order.status != "refunded":
-            return False
-        b = self.db.wallet.get(buyer)
-        s = self.db.wallet.get("me")
-        buyer_ok = b is not None and b.balance == buyer_before + price
-        seller_ok = s is not None and s.balance == seller_before - price + fee
-        return buyer_ok and seller_ok
-'''
-
-# ---------------------------------------------------------------------------
-# environment.py / utils.py / __init__.py
-# ---------------------------------------------------------------------------
-
-_ENV_TEMPLATE = '''"""Marketplace domain environment. GENERATED by BenchBrew (do not edit)."""
-from pathlib import Path
-from typing import Optional
-
-from tau2.data_model.tasks import Task
-from tau2.domains.marketplace.data_model import MarketplaceDB
-from tau2.domains.marketplace.tools import MarketplaceTools
-from tau2.domains.marketplace.utils import (
-    MARKETPLACE_DB_PATH,
-    MARKETPLACE_POLICY_PATH,
-    MARKETPLACE_TASK_SET_PATH,
-)
-from tau2.environment.environment import Environment
-from tau2.utils import load_file
+    return "\n".join(lines)
 
 
-def get_environment(db: Optional[MarketplaceDB] = None,
-                    solo_mode: bool = False) -> Environment:
-    if solo_mode:
-        raise ValueError("Marketplace domain does not support solo mode")
-    if db is None:
-        db = MarketplaceDB.load(MARKETPLACE_DB_PATH)
-    tools = MarketplaceTools(db)
-    with open(MARKETPLACE_POLICY_PATH, "r") as fp:
-        policy = fp.read()
-    return Environment(domain_name="marketplace", policy=policy, tools=tools)
+def _gen_environment(spec: DomainSpec) -> str:
+    cap = spec.name.replace("_", " ").title().replace(" ", "")
+    up = spec.name.upper()
+    lines = [
+        f'"""{cap} environment. GENERATED by BenchBrew (do not edit)."""',
+        "from __future__ import annotations",
+        "",
+        "from pathlib import Path",
+        "from typing import Optional",
+        "",
+        "from tau2.environment.environment import Environment",
+        "from tau2.data_model.tasks import Task",
+        "from tau2.utils import load_file",
+        "",
+        f"from .data_model import {cap}DB",
+        f"from .tools import {cap}Tools",
+        f"from .utils import {up}_DB_PATH, {up}_POLICY_PATH, {up}_TASK_SET_PATH",
+        "",
+        "",
+        f"def get_environment(db: Optional[{cap}DB] = None,",
+        "                    solo_mode: bool = False) -> Environment:",
+        '    if solo_mode:',
+        f'        raise ValueError("{spec.name} domain does not support solo mode")',
+        "    if db is None:",
+        f"        db = {cap}DB.load({up}_DB_PATH)",
+        f"    tools = {cap}Tools(db)",
+        f"    with open({up}_POLICY_PATH, \"r\") as fp:",
+        "        policy = fp.read()",
+        f'    return Environment(domain_name="{spec.name}", policy=policy, tools=tools)',
+        "",
+        "",
+        'def get_tasks(task_split_name: Optional[str] = "base") -> list[Task]:',
+        f"    tasks = load_file({up}_TASK_SET_PATH)",
+        "    tasks = [Task.model_validate(task) for task in tasks]",
+        "    if task_split_name is None:",
+        "        return tasks",
+        "    task_splits = get_tasks_split()",
+        "    if task_split_name not in task_splits:",
+        "        raise ValueError(",
+        '            f"Invalid task split name: {task_split_name}. '
+        'Valid splits are: {task_splits.keys()}"',
+        "        )",
+        "    return [task for task in tasks if task.id in task_splits[task_split_name]]",
+        "",
+        "",
+        "def get_tasks_split() -> dict[str, list[str]]:",
+        "    split_file = (",
+        f"        Path({up}_TASK_SET_PATH).parent",
+        f"        / f\"split_{{Path({up}_TASK_SET_PATH).stem}}.json\"",
+        "    )",
+        "    return load_file(split_file)",
+        "",
+    ]
+    return "\n".join(lines)
 
 
-def get_tasks(task_split_name: Optional[str] = "base") -> list[Task]:
-    tasks = load_file(MARKETPLACE_TASK_SET_PATH)
-    tasks = [Task.model_validate(task) for task in tasks]
-    if task_split_name is None:
-        return tasks
-    task_splits = get_tasks_split()
-    if task_split_name not in task_splits:
-        raise ValueError(
-            f"Invalid task split name: {task_split_name}. Valid splits are: {task_splits.keys()}"
-        )
-    return [task for task in tasks if task.id in task_splits[task_split_name]]
-
-
-def get_tasks_split() -> dict[str, list[str]]:
-    split_file = (
-        Path(MARKETPLACE_TASK_SET_PATH).parent
-        / f"split_{Path(MARKETPLACE_TASK_SET_PATH).stem}.json"
+def _gen_utils(spec: DomainSpec) -> str:
+    up = spec.name.upper()
+    return (
+        f'"""{spec.name} data paths. GENERATED by BenchBrew."""\n'
+        "from pathlib import Path\n"
+        "\n"
+        "_DATA = Path(__file__).parent.parent.parent.parent.parent "
+        f'/ "data" / "tau2" / "domains" / "{spec.name}"\n'
+        f"{up}_DB_PATH = _DATA / \"db.json\"\n"
+        f"{up}_POLICY_PATH = _DATA / \"policy.md\"\n"
+        f"{up}_TASK_SET_PATH = _DATA / \"tasks.json\"\n"
     )
-    return load_file(split_file)
-'''
-
-_UTILS_TEMPLATE = '''"""Data paths for the marketplace domain. GENERATED by BenchBrew."""
-from pathlib import Path
-
-_DATA = Path(__file__).parent.parent.parent.parent.parent / "data" / "tau2" / "domains" / "marketplace"
-MARKETPLACE_DB_PATH = _DATA / "db.json"
-MARKETPLACE_POLICY_PATH = _DATA / "policy.md"
-MARKETPLACE_TASK_SET_PATH = _DATA / "tasks.json"
-'''
-
-_INIT_TEMPLATE = ''  # empty package marker
 
 
 def _policy_md(spec: DomainSpec) -> str:
+    plat = getattr(spec, "platform", None) or {}
     lines = [
-        "# MarketHub marketplace policy",
+        f"# {plat.get('name', spec.name)} policy",
         "",
-        f"Policy snapshot: {spec.version}. Every rule traces to a real-world",
-        "source (BenchBrew GROUNDING.md).",
+        f"Policy snapshot: {spec.version} ({plat.get('snapshot', '?')}). "
+        "Every rule traces to a real-world source (BenchBrew GROUNDING.md).",
         "",
         "## Platform profile",
-        "Mediation: high (eBay/Poshmark-shaped). Fees: 13.25% + $0.30 per order,",
-        "30% discount for Top Rated sellers. Protection: 30 days after delivery,",
-        "not-as-described. Offers expire after 24h. Handling window: 2h.",
+        f"Mediation: {plat.get('mediation', 'see GROUNDING.md')}.",
+    ]
+    if plat.get("fee") is not None:
+        lines.append(f"Fees: {plat['fee']}.")
+    lines += [
         "",
         "## Rules (the oracle)",
     ]
     for name, src in spec.rule_sources.items():
         lines.append(f"- **{name}**: {src}")
-    lines += [
-        "",
-        "## Scam patterns (the tell is in the text)",
-        "- Courier pickup + insurance fee",
-        "- Gift-card / off-platform payment",
-        "- Overpayment + refund the difference",
-        "- Urgency + wire money",
-    ]
+    pats = plat.get("scam_patterns") or {}
+    if pats:
+        lines += ["", "## Scam patterns (the tell is in the text)"]
+        for p in pats.values():
+            lines.append(f"- {p[:100]}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Emission
+# ---------------------------------------------------------------------------
 
 
 def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
@@ -825,27 +418,14 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
     src_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. data_model.py / tools.py / environment.py / utils.py / __init__.py
-    (src_dir / "data_model.py").write_text(_DM_TEMPLATE)
-    rule_lines = "\n".join(
-        f"# {k}: {v}" for k, v in spec.rule_sources.items()
-    )
-    tools_code = (
-        _TOOLS_TEMPLATE
-        .replace("%%SNAPSHOT%%", "2026-08")
-        .replace("%%MEDIATION%%", "high")
-        .replace("%%RULE_SOURCES%%", rule_lines)
-        .replace("%%FEE_PERCENT%%", "0.1325")
-        .replace("%%FEE_FIXED%%", "0.30")
-        .replace("%%PROTECTION_WINDOW%%", "30")
-        .replace("%%OFFER_EXPIRY%%", "24")
-        .replace("%%HANDLING_WINDOW%%", "2")
-        .replace("%%TRS_DISCOUNT%%", "0.30")
-    )
-    (src_dir / "tools.py").write_text(tools_code)
-    (src_dir / "environment.py").write_text(_ENV_TEMPLATE)
-    (src_dir / "utils.py").write_text(_UTILS_TEMPLATE)
-    (src_dir / "__init__.py").write_text(_INIT_TEMPLATE)
+    # 1. embedded spec + adapter files
+    (src_dir / "compat.py").write_text(_COMPAT_TEMPLATE)
+    (src_dir / "spec_code.py").write_text(_spec_source(spec))
+    (src_dir / "data_model.py").write_text(_gen_data_model(spec))
+    (src_dir / "tools.py").write_text(_gen_tools(spec))
+    (src_dir / "environment.py").write_text(_gen_environment(spec))
+    (src_dir / "utils.py").write_text(_gen_utils(spec))
+    (src_dir / "__init__.py").write_text("")
 
     # 2. db.json — the baseline world (all declared collections present)
     def _complete(collections: dict) -> dict:
@@ -862,17 +442,14 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
     out_tasks = []
     for t in tasks:
         promoted = json.loads(t["initial_world"].canonical())
-        _promote_ctx(t["ctx"], promoted["collections"])
-        assertion = _assertion_for(t)
-        env_assertions = []
-        if assertion:
-            env_assertions.append({
-                "env_type": "assistant",  # ToolRequestor = user | assistant
-                "func_name": assertion["func_name"],
-                "arguments": assertion["arguments"],
-                "assert_value": True,
-                "message": f"task {t['id']}: {t['goal_desc'](t['ctx'])}",
-            })
+        promoted["task_ctx"] = t["ctx"]
+        env_assertions = [{
+            "env_type": "assistant",  # ToolRequestor = user | assistant
+            "func_name": f"assert_{t['archetype']}_ok",
+            "arguments": {},
+            "assert_value": True,
+            "message": f"task {t['id']}: {t['goal_desc'](t['ctx'])}",
+        }]
         out_tasks.append({
             "id": t["id"],
             "description": {
@@ -884,14 +461,15 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
                 "persona": None,
                 "instructions": {
                     "task_instructions": t["prompt"],
-                    "domain": "marketplace",
-                    "reason_for_call": "Alex needs your help with their marketplace activity.",
+                    "domain": spec.name,
+                    "reason_for_call": "Alex needs your help.",
                     "known_info": "See initial state.",
                     "unknown_info": None,
                 },
             },
             "initial_state": {
-                "initialization_data": {"agent_data": _complete(promoted["collections"])},
+                "initialization_data": {
+                    "agent_data": _complete(promoted)},
                 "initialization_actions": None,
                 "message_history": None,
             },
@@ -902,7 +480,8 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
                 "nl_assertions": [],
                 "reward_basis": ["ENV_ASSERTION"],
             },
-            "annotations": None,
+            "annotations": {"benchbrew_ctx": t["ctx"],
+                            "benchbrew_seed": seed},
         })
     (data_dir / "tasks.json").write_text(json.dumps(out_tasks, indent=2, default=str))
 
