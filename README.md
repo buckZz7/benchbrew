@@ -76,12 +76,19 @@ discriminate — the 1-bit canary is part of the calibration gate.
 
 **Pilsner plug-in (the integration):** the same bundle emits a complete
 runnable τ² domain — registered, per-task worlds applied, oracle enforced
-through τ²'s own evaluator. First end-to-end receipt:
+through τ²'s own evaluator. End-to-end receipts through the arena's real
+harness (`tau2 run --domain marketplace`, live model):
 
 ```
-tau2 run --domain marketplace --agent-llm qwen36-iq2xxs ... 
-→ Average Reward 0.667 (2/3), scored by ENV_ASSERTION (spec-derived predicates)
+3-task run:  Average Reward 0.667 (2/3)
+8-task run:  Average Reward 0.375 (3/8), after adding get_inbox
 ```
+
+The τ² path scores lower than the standalone runner (0.909) because τ²'s
+LLM user-sim drives the conversation and the agent must discover its inbox
+via `get_inbox` — world state, not a prompt handout. That gap is the arena's
+operating point, not a harness bug: receipts are produced, scored by the
+spec-derived oracle, and analyzable per task (reward + termination).
 
 ## Quick start
 
