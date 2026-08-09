@@ -216,3 +216,18 @@ v0.4/v0.5 hardening (counterparty events, scam variants, refund math,
 full-inbox triage, actor binding) resolved it. Weak collapsed 0.909 -> 0.231
 while strong held. Lane is IN WINDOW; no further hardening planned
 (lesson: re-measure before building — the trigger is the measurement).
+
+### travel calibration (v0.2, seed 42, 28 tasks — 14 archetypes x 2)
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3-4B Q8 (weak) | 0.107 | 0.2 | 50.0% |
+| Qwen3.6-27B IQ2_XXS (strong) | 0.75 | 3.6 | 2.0% |
+
+Gap 0.64. The v0.2 hardening pulled the strong model off the ceiling
+(0.95 -> 0.75) with change-fee / multi-cancel / car-choice / re-orchestration
+shapes — real dethrone headroom restored. Weak floors (0.11, barely acts;
+50% error when it tries) — acceptable: proves the lane is non-trivial, and
+the strong clears it decisively. Lane IN WINDOW (strong slightly below the
+~0.85 guide; accepting — over-tuning to hit a number is overfitting the
+ruler to the calibration models).
