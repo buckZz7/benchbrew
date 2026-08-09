@@ -231,3 +231,21 @@ shapes — real dethrone headroom restored. Weak floors (0.11, barely acts;
 the strong clears it decisively. Lane IN WINDOW (strong slightly below the
 ~0.85 guide; accepting — over-tuning to hit a number is overfitting the
 ruler to the calibration models).
+
+## Domain 5: marketplace_lowmediation profile (agent-as-safety-net) — 2026-08
+
+The marketplace machinery with LOW-mediation policy. Sources:
+- **No platform fee, no buyer protection, no seller levels, no offer
+  mechanism**: craigslist.org (local classifieds: free postings, "deals with
+  strangers can lead to trouble", anonymous sellers, direct negotiation).
+- **Payment is cash at pickup; never release before payment in hand**:
+  craigslist.org/about/scams (local meet-ups, cash preferred).
+- **Scam tells (all sourced)**: courier pickup + "payment already wired"
+  (craigslist.org/about/scams); cashier's-check overpayment + refund the
+  difference (consumer.ftc.gov/articles/how-avoid-scams-using-marketplaces);
+  Google Voice verification-code request (consumer.ftc.gov articles on
+  Google Voice scams); wire-only payment pressure (FTC: "that's a scam,
+  every time" — avoid-scams-when-you-travel + marketplaces articles).
+- **No platform mediation**: the platform does not mediate disputes or
+  refunds — the agent surfaces the truth to Alex instead of filing
+  nonexistent claims.

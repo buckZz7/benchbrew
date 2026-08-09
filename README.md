@@ -46,55 +46,61 @@ secrecy; the pool is unbounded, so memorizing it is uneconomical.
   runs on our zero-dependency runner OR emits a complete runnable τ² domain
   (the arena's official harness).
 
-## The v1 domain: second-hand marketplace (buy/sell concierge)
+## The lanes (all generated from specs — new lanes are new specs, not machinery)
 
-The evaluated agent is **Alex's personal assistant on a marketplace** — the
-on-device-agent use case. Both sides:
+| Lane | What it measures | Weak (4B) | Strong (27B IQ2) | Gap |
+|---|---|---|---|---|
+| marketplace v0.5 | two-sided commerce: negotiate, escrow math, scam screens | 0.23 | 0.92 | 0.69 |
+| local_services v0.2 | booking lifecycle: escrow release, cancellation windows, provider standing | 0.53 | 0.72 | 0.19 |
+| personal_finance v0.1 | the money agent: Reg E reporting clock, budgets, subscriptions, fraud | 0.35 | 0.65 | 0.31 |
+| travel v0.2 | itinerary orchestration: DOT booking clock, hotel/car windows, disruption rebook | 0.11 | 0.75 | 0.64 |
+| marketplace_lowmediation v0.1 | agent-as-safety-net: no escrow, no protection — the agent IS the trust layer | *calibrating* | | |
 
-- **sell**: list items, accept offers at/above the floor, decline lowballs,
-  flag scams, ship on time (or lose Top Rated)
-- **buy**: negotiate within budget, avoid scam sellers, know the protection
-  window
+Every lane hits a calibration window (weak ~0.3-0.5, strong ~0.85, gap >= 0.15):
+compression (weak ~= strong) is the worst failure — the ruler is blind; saturation
+(strong >= 0.95) stalls the ladder. Hardening is triggered by MEASUREMENT, never
+a schedule: re-calibrate on any spec change, harden worst-deviation-first.
+
+## The spec pipeline (generic by construction)
+
+A domain is a spec: entities, actor-bound tools, rules (the oracle, every rule
+sourced in GROUNDING.md), and archetypes (sample -> world, prompt, goal
+predicates). The τ² emitter (emitter_tau2.py) is SPEC-DRIVEN — it embeds the
+spec module itself and generates the adapter, so ANY spec emits a runnable τ²
+domain. Proven live: marketplace, local_services, personal_finance, and travel
+all emit, register, and score through `tau2 run` with the spec's own goal
+functions as env assertions.
 
 Counterparty activity is deterministic world state + scripted mid-run events
-(the seller counters your offer) — no LLM-simulated people.
+(the seller counters your offer, the airline cancels the flight) — no
+LLM-simulated people.
 
 ## Measured so far
 
-Standalone runner (benchbrew/runner.py), 22-task bundle, seed 42, live models:
+Calibration (standalone runner, seed 42, live models) — full evidence in
+GROUNDING.md, refreshed on every spec change:
 
-| Model | Score | calls/task | tool-error rate |
-|---|---|---|---|
-| Qwen3.6-27B IQ1_M (1-bit) | 0.682 (15/22) | 3.7 | 22.2% |
-| Qwen3-4B Q8 | 0.909 (20/22) | 2.1 | 10.6% |
-| Qwen3.6-27B IQ2_XXS (2-bit) | 0.909 (20/22) | 2.5 | 7.3% |
+- marketplace v0.5: **0.23 vs 0.92** (the historical 0.91/0.91 was stale v0.3 data)
+- local_services v0.2: **0.53 vs 0.72**
+- personal_finance v0.1: **0.35 vs 0.65**
+- travel v0.2: **0.11 vs 0.75** (v0.1 was 0.25 vs 0.95 — ceiling hardening worked)
 
-The ordering reproduces the Pilsner arena's known cliff: 1-bit collapses on
-multi-decision orchestration (fails `sell_full_inbox` outright), 2-bit and 4B
-are healthy. The multi-decision archetypes exist precisely to make the lane
-discriminate — the 1-bit canary is part of the calibration gate.
+The 1-bit canary (IQ1_M ~0.3 on marketplace) is part of the calibration gate:
+a lane must separate weak from strong.
 
 **Pilsner plug-in (the integration):** the same bundle emits a complete
 runnable τ² domain — registered, per-task worlds applied, oracle enforced
-through τ²'s own evaluator. End-to-end receipts through the arena's real
-harness (`tau2 run --domain marketplace`, live model):
-
-```
-3-task run:  Average Reward 0.667 (2/3)
-8-task run:  Average Reward 0.375 (3/8), after adding get_inbox
-```
-
-The τ² path scores lower than the standalone runner (0.909) because τ²'s
-LLM user-sim drives the conversation and the agent must discover its inbox
-via `get_inbox` — world state, not a prompt handout. That gap is the arena's
-operating point, not a harness bug: receipts are produced, scored by the
-spec-derived oracle, and analyzable per task (reward + termination).
+through τ²'s own evaluator. Receipts carry full provenance (spec sha, seed,
+bundle sha) and are replay-verified through the DOMAIN THAT PRODUCED THE SIM
+before the board admits them. The arena loop: fresh public seed -> emit ->
+`tau2 run` -> verified receipt -> board king.
 
 ## Quick start
 
 ```bash
-# generate + emit a deterministic bundle
-python3 -m benchbrew --seed 42 --tasks 12
+# generate + emit a deterministic bundle (any spec: --domain local_services,
+# personal_finance, travel, marketplace_lowmediation)
+python3 -m benchbrew --seed 42 --tasks 12 --domain marketplace
 
 # run it against any OpenAI-compatible endpoint (our zero-dep runner)
 BENCHBREW_BASE_URL=... BENCHBREW_MODEL=... python3 - <<'EOF'
