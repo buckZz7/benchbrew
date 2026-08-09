@@ -65,7 +65,7 @@ class TestRunner(unittest.TestCase):
         t = task_of("buy_negotiate", 2)
         ctx = t["ctx"]
         agent = ScriptedAgent([
-            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+            ("make_offer", {"listing_id": ctx["listing_id"],
                             "amount": ctx["accept_at"]}),
         ])
         r = run_task(MARKETPLACE, agent, t)
@@ -101,7 +101,7 @@ class TestRunner(unittest.TestCase):
         t = task_of("sell_reject_lowball", 4)
         # agent keeps making offers forever -> capped
         agent = ScriptedAgent([("make_offer", {"listing_id": t["ctx"]["listing_id"],
-                                               "buyer_id": "me", "amount": 1})] * 50)
+                                               "amount": 1})] * 50)
         r = run_task(MARKETPLACE, agent, t, max_steps=5)
         self.assertEqual(r.termination, "max_steps")
         self.assertEqual(r.tool_calls, 5)
@@ -120,7 +120,7 @@ class TestRunner(unittest.TestCase):
         offer = next(e for e in t["inbox"] if e["type"] == "offer")
         # waste 3 steps first -> offer expired by the time we accept
         agent = ScriptedAgent([("get_listing", {"listing_id": "ml1"}),
-                               ("get_wallet", {"user_id": "me"}),
+                               ("get_wallet", {}),
                                ("get_listing", {"listing_id": "ml1"}),
                                ("respond_offer", {"offer_id": offer["offer_id"],
                                                   "action": "accept"})])
@@ -143,7 +143,7 @@ class TestRunner(unittest.TestCase):
     def test_ship_on_time_dawdle_loses_rating(self):
         t = task_of("sell_ship_on_time", 4)
         # a read before shipping pushes the second order past the window
-        agent = ScriptedAgent([("get_wallet", {"user_id": "me"}),
+        agent = ScriptedAgent([("get_wallet", {}),
                                ("ship_order", {"order_id": "ord1"}),
                                ("ship_order", {"order_id": "ord2"})])
         r = run_task(MARKETPLACE, agent, t)
@@ -237,7 +237,7 @@ class TestRunner(unittest.TestCase):
         ctx = t["ctx"]
         # make an offer within budget -> seller counters -> accept the counter
         agent = ScriptedAgent([
-            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+            ("make_offer", {"listing_id": ctx["listing_id"],
                             "amount": int(ctx["budget"] * 0.7)}),
             ("respond_offer", {"offer_id": "co1", "action": "accept"}),
         ])
@@ -250,7 +250,7 @@ class TestRunner(unittest.TestCase):
         ctx = t["ctx"]
         # offer made, counter ignored -> no order
         agent = ScriptedAgent([
-            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+            ("make_offer", {"listing_id": ctx["listing_id"],
                             "amount": int(ctx["budget"] * 0.7)}),
         ])
         r = run_task(MARKETPLACE, agent, t)
@@ -262,7 +262,7 @@ class TestRunner(unittest.TestCase):
         ctx = t["ctx"]
         # offering above budget auto-accepts at a price over budget
         agent = ScriptedAgent([
-            ("make_offer", {"listing_id": ctx["listing_id"], "buyer_id": "me",
+            ("make_offer", {"listing_id": ctx["listing_id"],
                             "amount": ctx["budget"] + 50}),
         ])
         r = run_task(MARKETPLACE, agent, t)

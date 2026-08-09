@@ -109,7 +109,7 @@ def _list_item(world, args, ctx):
     lid = f"l{len(listings) + 1}"
     rec = {
         "id": lid,
-        "seller_id": args["seller_id"],
+        "seller_id": ME,  # actor binding: the agent acts only for Alex
         "title": args["title"],
         "category": args["category"],
         "price": int(args["price"]),
@@ -121,9 +121,9 @@ def _list_item(world, args, ctx):
 
 
 def _get_wallet(world, args, ctx):
-    wallet = world.get("wallet").get(args["user_id"])
+    wallet = world.get("wallet").get(ME)  # actor binding: Alex's wallet only
     if wallet is None:
-        raise ValueError(f"user {args['user_id']} not found")
+        raise ValueError(f"user {ME} not found")
     return wallet
 
 
@@ -157,7 +157,7 @@ def _make_offer(world, args, ctx):
     rec = {
         "id": oid,
         "listing_id": args["listing_id"],
-        "buyer_id": args["buyer_id"],
+        "buyer_id": ME,  # actor binding: only Alex can make offers
         "amount": amount,
         "status": "pending",
         "created_at_tick": _tick(world),
@@ -168,7 +168,7 @@ def _make_offer(world, args, ctx):
     accept_at = ctx.get("accept_at")
     if accept_at is not None and amount >= accept_at:
         rec["status"] = "accepted"
-        _create_order(world, listing, args["buyer_id"], amount, ctx)
+        _create_order(world, listing, ME, amount, ctx)
     return rec
 
 
@@ -1022,20 +1022,18 @@ MARKETPLACE = DomainSpec(
                                     "find active listings"),
         "get_listing": ToolSpec("get_listing", {"listing_id": str}, "read",
                                 "get one listing by id"),
-        "list_item": ToolSpec("list_item", {"seller_id": str, "title": str,
-                                            "category": str, "price": int,
-                                            "condition": str}, "write",
-                              "create a new active listing"),
-        "get_wallet": ToolSpec("get_wallet", {"user_id": str}, "read",
-                               "get a user's wallet balance"),
+        "list_item": ToolSpec("list_item", {"title": str, "category": str,
+                                           "price": int, "condition": str}, "write",
+                              "create a new active listing for Alex"),
+        "get_wallet": ToolSpec("get_wallet", {}, "read",
+                               "get Alex's wallet balance"),
         "get_inbox": ToolSpec("get_inbox", {}, "read",
                               "get Alex's pending offers, messages, and orders"),
         "refund_order": ToolSpec("refund_order", {"order_id": str, "amount": int}, "write",
                                  "refund a delivered order within the 30-day protection window; "
                                  "full refunds credit the final-value fee back to the seller"),
-        "make_offer": ToolSpec("make_offer", {"listing_id": str, "buyer_id": str,
-                                              "amount": int}, "write",
-                               "make an offer; auto-accepted at/above the listing's threshold"),
+        "make_offer": ToolSpec("make_offer", {"listing_id": str, "amount": int}, "write",
+                               "make an offer as Alex; auto-accepted at/above the listing's threshold"),
         "respond_offer": ToolSpec("respond_offer", {"offer_id": str,
                                                     "action": str,
                                                     "amount": int | None}, "write",

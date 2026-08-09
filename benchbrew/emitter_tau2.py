@@ -294,18 +294,15 @@ class MarketplaceTools(ToolKitBase):
         return self._get_listing(listing_id).model_dump()
 
     @is_tool(ToolType.READ)
-    def get_wallet(self, user_id: str) -> dict:
-        """Get a user's wallet balance.
-
-        Args:
-            user_id: the user id, such as 'me'.
+    def get_wallet(self) -> dict:
+        """Get Alex's wallet balance.
 
         Returns:
             The wallet balance.
         """
-        if user_id not in self.db.wallet:
-            raise ValueError(f"user {user_id} not found")
-        return self.db.wallet[user_id].model_dump()
+        if "me" not in self.db.wallet:
+            raise ValueError("user me not found")
+        return self.db.wallet["me"].model_dump()
 
     @is_tool(ToolType.READ)
     def get_inbox(self) -> dict:
@@ -334,12 +331,11 @@ class MarketplaceTools(ToolKitBase):
     # -- write tools (rules enforced before mutation; tick advances) --------
 
     @is_tool(ToolType.WRITE)
-    def list_item(self, seller_id: str, title: str, category: str,
-                  price: int, condition: str) -> dict:
-        """Create a new active listing.
+    def list_item(self, title: str, category: str, price: int,
+                  condition: str) -> dict:
+        """Create a new active listing for Alex.
 
         Args:
-            seller_id: the seller's user id.
             title: the item title.
             category: the item category.
             price: the list price in dollars.
@@ -350,7 +346,7 @@ class MarketplaceTools(ToolKitBase):
         """
         price = int(price)
         lid = f"l{{len(self.db.listings) + 1}}"
-        rec = Listing(id=lid, seller_id=seller_id, title=title,
+        rec = Listing(id=lid, seller_id="me", title=title,
                       category=category, price=price, condition=condition,
                       status="active")
         self.db.listings[lid] = rec
@@ -358,13 +354,12 @@ class MarketplaceTools(ToolKitBase):
         return rec.model_dump()
 
     @is_tool(ToolType.WRITE)
-    def make_offer(self, listing_id: str, buyer_id: str, amount: int) -> dict:
-        """Make an offer; at or above the listing's accept threshold it is
-        accepted instantly and becomes an order (Buy-It-Now shape).
+    def make_offer(self, listing_id: str, amount: int) -> dict:
+        """Make an offer as Alex; at or above the listing's accept threshold
+        it is accepted instantly and becomes an order (Buy-It-Now shape).
 
         Args:
             listing_id: the listing id.
-            buyer_id: the buyer's user id.
             amount: the offer amount in dollars.
 
         Returns:
@@ -373,7 +368,7 @@ class MarketplaceTools(ToolKitBase):
         listing = self._get_listing(listing_id)
         amount = int(amount)
         oid = f"o{{len(self.db.offers) + 1}}"
-        rec = Offer(id=oid, listing_id=listing_id, buyer_id=buyer_id,
+        rec = Offer(id=oid, listing_id=listing_id, buyer_id="me",
                     amount=amount, status="pending", created_at_tick=self._tick())
         self.db.offers[oid] = rec
         if listing.accept_at is not None and amount >= listing.accept_at:

@@ -126,7 +126,7 @@ class TestPolicy(unittest.TestCase):
         _, tasks = self.gen.generate(1, 1)
         w = tasks[0]["initial_world"].clone()
         self.sim.execute(w, "list_item",
-                         {"seller_id": "me", "title": "x", "category": "c",
+                         {"title": "x", "category": "c",
                           "price": 10, "condition": "good"}, {})
         # no delivered order exists -> any dispute attempt fails
         with self.assertRaises(PolicyError):
@@ -177,7 +177,7 @@ class TestVerifier(unittest.TestCase):
         ctx = t["ctx"]
         # offer exactly the accept threshold (<= budget by construction)
         self.sim.execute(w, "make_offer",
-                         {"listing_id": ctx["listing_id"], "buyer_id": "me",
+                         {"listing_id": ctx["listing_id"],
                           "amount": ctx["accept_at"]}, ctx)
         ok, reasons = check(t, w)
         self.assertTrue(ok, reasons)
@@ -193,7 +193,7 @@ class TestVerifier(unittest.TestCase):
         # engaging the scammer is blocked by policy
         with self.assertRaises(PolicyError):
             self.sim.execute(w, "make_offer",
-                             {"listing_id": ctx["listing_id"], "buyer_id": "me",
+                             {"listing_id": ctx["listing_id"],
                               "amount": 5}, ctx)
 
 
