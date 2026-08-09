@@ -994,7 +994,7 @@ def arch_sell_ship_on_time_goal(world, ctx):
 
 MARKETPLACE = DomainSpec(
     name="marketplace",
-    version="0.4.0",
+    version="0.5.0",
     entities={
         "users": EntitySpec({"id": str, "name": str, "trust": float,
                              "transactions": int, "defects": int,
