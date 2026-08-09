@@ -215,6 +215,31 @@ class TestEmitter(unittest.TestCase):
             self.assertIn("bundle_hash", json.loads((out / "manifest.json").read_text()))
             self.assertTrue((out / "checks.py").exists())
 
+    def test_emits_tau2_domain_package(self):
+        """The τ²-domain emitter writes a complete, registered domain package."""
+        from benchbrew.emitter_tau2 import emit_tau2_domain
+        import tempfile
+        g = Generator(MARKETPLACE)
+        w, tasks = g.generate(42, 4)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            # fake the tau2 layout: src/tau2/registry.py + data/
+            reg = root / "src" / "tau2" / "registry.py"
+            reg.parent.mkdir(parents=True)
+            reg.write_text("from tau2.registry import registry\n")
+            src = emit_tau2_domain(MARKETPLACE, 42, tasks, w, root)
+            for f in ("data_model.py", "tools.py", "environment.py", "utils.py",
+                      "__init__.py"):
+                self.assertTrue((src / f).exists(), f)
+            data = root / "data" / "tau2" / "domains" / "marketplace"
+            for f in ("tasks.json", "db.json", "split_tasks.json", "policy.md"):
+                self.assertTrue((data / f).exists(), f)
+            self.assertIn("_bb_marketplace_get_environment", reg.read_text())
+            tj = json.loads((data / "tasks.json").read_text())
+            self.assertEqual(len(tj), 4)
+            self.assertIn("initialization_data", tj[0]["initial_state"])
+            self.assertIn("seller_floor", json.dumps(tj))
+
 
 if __name__ == "__main__":
     unittest.main()
