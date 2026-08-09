@@ -39,9 +39,13 @@ class TestPolicy(unittest.TestCase):
         t = task_of("plan_itinerary", 5)
         w = t["initial_world"].clone()
         ctx = t["ctx"]
+        trip = w.get("trips")[ctx["trip_id"]]
+        trip["budget"] = 500  # tighten: f3 (340) + f2 (280) = 620 > 500
+        self.sim.execute(w, "book_flight",
+                         {"option_id": "f3", "trip_id": ctx["trip_id"]}, ctx)
         with self.assertRaises(PolicyError):
             self.sim.execute(w, "book_flight",
-                             {"option_id": "f3", "trip_id": ctx["trip_id"]},
+                             {"option_id": "f2", "trip_id": ctx["trip_id"]},
                              ctx)
 
 
@@ -74,6 +78,7 @@ class TestRunner(unittest.TestCase):
         ctx = t["ctx"]
         r = run_task(TRAVEL, ScriptedAgent([
             ("book_flight", {"option_id": "f3", "trip_id": ctx["trip_id"]}),
+            ("book_flight", {"option_id": "f2", "trip_id": ctx["trip_id"]}),
         ]), t)
         self.assertFalse(r.success)
         self.assertGreater(r.tool_errors, 0)
