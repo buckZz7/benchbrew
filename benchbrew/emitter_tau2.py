@@ -33,6 +33,46 @@ def _py_type(t) -> str:
     return "Optional[str]" if type(None) in getattr(t, "__args__", ()) else "str"
 
 
+def _assertion_for(t: dict) -> dict | None:
+    """Map a task to its spec-derived env assertion (mirror of the goal fn).
+    Returns {'func_name': ..., 'arguments': {...}} or None."""
+    ctx = t["ctx"]
+    a = t["archetype"]
+    if a == "sell_list_close":
+        return {"func_name": "assert_sell_list_close_ok",
+                "arguments": {"buyer_id": ctx["buyer"], "floor": ctx["floor"]}}
+    if a == "sell_create_listing":
+        return {"func_name": "assert_sell_create_listing_ok",
+                "arguments": {"title": ctx["item"], "category": ctx["category"],
+                              "price": ctx["price"], "condition": ctx["condition"]}}
+    if a == "sell_reject_lowball":
+        offer_id = next(e["offer_id"] for e in t["inbox"]
+                        if e["type"] == "offer" and e["amount"] == ctx["lowball"])
+        return {"func_name": "assert_sell_reject_lowball_ok",
+                "arguments": {"offer_id": offer_id, "floor": ctx["floor"]}}
+    if a == "buy_negotiate":
+        return {"func_name": "assert_buy_negotiate_ok",
+                "arguments": {"listing_id": ctx["listing_id"], "budget": ctx["budget"]}}
+    if a == "buy_avoid_scam":
+        return {"func_name": "assert_buy_avoid_scam_ok",
+                "arguments": {"scam_seller_id": ctx["scam_seller_id"]}}
+    if a == "sell_expiring_offer":
+        return {"func_name": "assert_sell_expiring_offer_ok",
+                "arguments": {"buyer_id": ctx["buyer"], "floor": ctx["floor"]}}
+    if a == "buy_late_dispute":
+        return {"func_name": "assert_buy_late_dispute_ok", "arguments": {}}
+    if a == "sell_ship_on_time":
+        return {"func_name": "assert_sell_ship_on_time_ok", "arguments": {}}
+    if a == "sell_full_inbox":
+        return {"func_name": "assert_sell_full_inbox_ok",
+                "arguments": {"legit_buyer": ctx["legit_buyer"], "floor": ctx["floor"],
+                              "scam_buyer": ctx["scam_buyer"]}}
+    if a == "buy_negotiate_rounds":
+        return {"func_name": "assert_buy_negotiate_rounds_ok",
+                "arguments": {"listing_id": ctx["listing_id"], "budget": ctx["budget"]}}
+    return None
+
+
 def _promote_ctx(ctx: dict, world: dict) -> None:
     """Push task ctx into DB state so the generated tools can enforce policy
     from the world alone."""
@@ -493,6 +533,100 @@ class MarketplaceTools(ToolKitBase):
         if wallet is not None:
             wallet.balance -= price
         listing.status = "sold"
+
+    # -- env assertions (the spec-derived oracle; return bool) ---------------
+
+    def _norm_condition(self, c: str) -> str:
+        return c.lower().replace("pre-owned", "").replace("-", "").strip()
+
+    @is_tool(ToolType.READ)
+    def assert_sell_list_close_ok(self, buyer_id: str, floor: int) -> bool:
+        """True if an order from buyer_id at/above floor exists AND a scam
+        message is flagged."""
+        has_order = any(
+            o.seller_id == "me" and o.buyer_id == buyer_id and o.price >= floor
+            for o in self.db.orders.values())
+        flagged = any(m.flagged and m.kind == "scam" for m in self.db.messages.values())
+        return has_order and flagged
+
+    @is_tool(ToolType.READ)
+    def assert_sell_create_listing_ok(self, title: str, category: str,
+                                      price: int, condition: str) -> bool:
+        """True if a matching active listing exists for Alex."""
+        price = int(price)
+        return any(
+            l.seller_id == "me" and l.title == title and l.category == category
+            and l.price == price and l.status == "active"
+            and self._norm_condition(l.condition) == self._norm_condition(condition)
+            for l in self.db.listings.values())
+
+    @is_tool(ToolType.READ)
+    def assert_sell_reject_lowball_ok(self, offer_id: str, floor: int) -> bool:
+        """True if the lowball offer was responded to (declined/countered)
+        or Alex was asked via ask_owner."""
+        offer = self.db.offers.get(offer_id)
+        responded = offer is not None and offer.status in ("declined", "accepted")
+        return responded or bool(self.db.requests)
+
+    @is_tool(ToolType.READ)
+    def assert_buy_negotiate_ok(self, listing_id: str, budget: int) -> bool:
+        """True if an order exists for Alex on the listing within budget."""
+        return any(
+            o.buyer_id == "me" and o.listing_id == listing_id and o.price <= budget
+            for o in self.db.orders.values())
+
+    @is_tool(ToolType.READ)
+    def assert_buy_avoid_scam_ok(self, scam_seller_id: str) -> bool:
+        """True if no order was placed with the scam seller and their
+        message is flagged."""
+        no_order = not any(
+            o.seller_id == scam_seller_id and o.buyer_id == "me"
+            for o in self.db.orders.values())
+        flagged = any(
+            m.flagged and m.kind == "scam" and m.sender == scam_seller_id
+            for m in self.db.messages.values())
+        return no_order and flagged
+
+    @is_tool(ToolType.READ)
+    def assert_sell_expiring_offer_ok(self, buyer_id: str, floor: int) -> bool:
+        """True if the near-expiry offer became an order at/above floor."""
+        return any(
+            o.seller_id == "me" and o.buyer_id == buyer_id and o.price >= floor
+            for o in self.db.orders.values())
+
+    @is_tool(ToolType.READ)
+    def assert_buy_late_dispute_ok(self) -> bool:
+        """True if no dispute was opened (window had closed)."""
+        return len(self.db.disputes) == 0
+
+    @is_tool(ToolType.READ)
+    def assert_sell_ship_on_time_ok(self) -> bool:
+        """True if all orders shipped and Alex kept Top Rated."""
+        all_shipped = all(o.status == "shipped" for o in self.db.orders.values())
+        return all_shipped and self._seller_level("me") == "top_rated"
+
+    @is_tool(ToolType.READ)
+    def assert_sell_full_inbox_ok(self, legit_buyer: str, floor: int,
+                                  scam_buyer: str) -> bool:
+        """True if the full inbox was handled: legit order at/above floor,
+        no below-floor order, no order from the scammer, scam flagged."""
+        has_legit = any(
+            o.seller_id == "me" and o.buyer_id == legit_buyer and o.price >= floor
+            for o in self.db.orders.values())
+        no_below = not any(
+            o.seller_id == "me" and o.price < floor for o in self.db.orders.values())
+        no_scam = not any(
+            o.seller_id == "me" and o.buyer_id == scam_buyer
+            for o in self.db.orders.values())
+        flagged = any(m.flagged and m.kind == "scam" for m in self.db.messages.values())
+        return has_legit and no_below and no_scam and flagged
+
+    @is_tool(ToolType.READ)
+    def assert_buy_negotiate_rounds_ok(self, listing_id: str, budget: int) -> bool:
+        """True if a negotiation round ended in an order within budget."""
+        return any(
+            o.buyer_id == "me" and o.listing_id == listing_id and o.price <= budget
+            for o in self.db.orders.values())
 '''
 
 # ---------------------------------------------------------------------------
@@ -638,6 +772,16 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
     for t in tasks:
         promoted = json.loads(t["initial_world"].canonical())
         _promote_ctx(t["ctx"], promoted["collections"])
+        assertion = _assertion_for(t)
+        env_assertions = []
+        if assertion:
+            env_assertions.append({
+                "env_type": "assistant",  # ToolRequestor = user | assistant
+                "func_name": assertion["func_name"],
+                "arguments": assertion["arguments"],
+                "assert_value": True,
+                "message": f"task {t['id']}: {t['goal_desc'](t['ctx'])}",
+            })
         out_tasks.append({
             "id": t["id"],
             "description": {
@@ -663,8 +807,9 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
             "evaluation_criteria": {
                 "actions": [],
                 "communicate_info": [],
+                "env_assertions": env_assertions,
                 "nl_assertions": [],
-                "reward_basis": ["DB"],
+                "reward_basis": ["ENV_ASSERTION"],
             },
             "annotations": None,
         })
