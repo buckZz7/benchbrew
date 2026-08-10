@@ -263,3 +263,21 @@ scam-detection tasks that the weak model passes at parity — the axis is alread
 measured by marketplace (detection) and local_services (payment-gated release).
 Retained in the repo as a documented PLATFORM profile variant (the machinery
 demonstrates the profile concept; the calibration proves it is not a lane).
+
+## Domain 6: coding (the execution-verified lane) — 2026-08
+
+The oracle is an EXECUTABLE specification: submitted code is executed in a
+restricted sandbox against a hidden test suite; pass/fail is deterministic.
+Unlike consumer-policy lanes (Reg E, DOT), the source of truth is the test
+contract itself, authored in the spec — execution-verified by construction.
+
+- **Hidden-test rule**: hidden tests live ONLY in the goal predicates,
+  never in the agent's world. The agent's `run_tests` tool runs only the
+  visible suite, so overfitting the visible tests cannot pass the goal.
+- **Sandbox**: restricted builtins allowlist (no imports/IO/network) + a
+  3s timeout; unsafe code returns False without crashing the harness.
+- **Mechanic sources**: the test contracts define the behavior (self-authored
+  problem specs — the equivalent of the archetype samples in other lanes);
+  the sandbox pattern follows the standard restricted-exec approach used by
+  eval harnesses (safe-builtins exec). The lane's policy surface IS the
+  executable contract.
