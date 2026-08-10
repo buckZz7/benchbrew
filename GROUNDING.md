@@ -281,3 +281,20 @@ contract itself, authored in the spec — execution-verified by construction.
   the sandbox pattern follows the standard restricted-exec approach used by
   eval harnesses (safe-builtins exec). The lane's policy surface IS the
   executable contract.
+
+### coding calibration (v0.1, v0.1.1, v0.2 — all floored) + PARK decision
+
+| Version | Model | Score | calls/task | tool-error rate |
+|---|---|---|---|---|
+| v0.1 (no visible tests) | 4B / IQ2 | 0.0 / 0.0 | 0.5 / 6.9 | 64% / 44% |
+| v0.1.1 (+visible tests) | 4B / IQ2 | 0.0 / 0.107 | 0.6 / 7.1 | 50% / 41% |
+| v0.2 (minimal shapes) | 4B / IQ2 | 0.0 / 0.0 | 0.4 / 7.6 | 46% / 39% |
+
+**Verdict: PARKED as a frontier lane (2026-08-10).** The ~39-44% tool-error
+rate persists across every shape at 7+ calls/task — the binding constraint
+is the INTERFACE WALL: emitting a long token-exact code string through the
+tool-call JSON interface exceeds the low-precision model class (the same
+exact-token ceiling as the 1-bit entity-derivation finding, in extreme
+form). The lane stays in the repo, fully built/tested/emitted — the first
+ruler that measures beyond the current field. A challenger that can clear
+it becomes its king by construction.

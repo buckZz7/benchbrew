@@ -55,6 +55,7 @@ secrecy; the pool is unbounded, so memorizing it is uneconomical.
 | personal_finance v0.1 | the money agent: Reg E reporting clock, budgets, subscriptions, fraud | 0.35 | 0.65 | 0.31 |
 | travel v0.2 | itinerary orchestration: DOT booking clock, hotel/car windows, disruption rebook | 0.11 | 0.75 | 0.64 |
 | marketplace_lowmediation v0.1 | agent-as-safety-net profile — measured, gap 0.07 (compressed), DROPPED as a lane; kept as a profile variant | 0.43 | 0.50 | 0.07 |
+| coding v0.2 | execution-verified frontier lane — hidden-test oracle; both models floored (interface wall: long token-exact code strings exceed low-precision emission); PARKED, waiting for a challenger that can clear it | 0.0 | 0.0 | — |
 
 Every lane hits a calibration window (weak ~0.3-0.5, strong ~0.85, gap >= 0.15):
 compression (weak ~= strong) is the worst failure — the ruler is blind; saturation
