@@ -84,22 +84,13 @@ class TestArchetypes(unittest.TestCase):
         return ok
 
     # --- implement family ---
-    def test_implement_fizzbuzz_correct(self):
-        code = (
-            "def fizzbuzz(n):\n"
-            "    out = []\n"
-            "    for i in range(1, n + 1):\n"
-            "        if i % 15 == 0: out.append('FizzBuzz')\n"
-            "        elif i % 3 == 0: out.append('Fizz')\n"
-            "        elif i % 5 == 0: out.append('Buzz')\n"
-            "        else: out.append(str(i))\n"
-            "    return ' '.join(out)\n"
-        )
-        self.assertTrue(self._goal("implement_fizzbuzz", 0, code))
+    def test_implement_add_correct(self):
+        code = "def add(a, b):\n    return a + b\n"
+        self.assertTrue(self._goal("implement_add", 0, code))
 
-    def test_implement_fizzbuzz_wrong(self):
-        code = "def fizzbuzz(n):\n    return 'wrong'\n"
-        self.assertFalse(self._goal("implement_fizzbuzz", 0, code))
+    def test_implement_add_wrong(self):
+        code = "def add(a, b):\n    return a - b\n"
+        self.assertFalse(self._goal("implement_add", 0, code))
 
     def test_implement_cart_total_correct(self):
         code = (

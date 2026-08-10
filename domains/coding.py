@@ -140,28 +140,29 @@ def _seed(world: World, starter: str, visible_tests: dict) -> None:
 
 # --- implement family -------------------------------------------------------
 
-def arch_implement_fizzbuzz(rng, world, i):
+# --- implement family (minimal numeric shapes: one expression, no strings) ---
+
+def arch_implement_add(rng, world, i):
     _seed(world, "", {
-        "small": "def test():\n    return fizzbuzz(5) == '1 2 Fizz 4 Buzz'\n",
+        "small": "def test():\n    return add(2, 3) == 5\n",
     })
-    return {"file_id": "main", "task": "implement_fizzbuzz"}
+    return {"file_id": "main", "task": "implement_add"}
 
 
-def arch_implement_fizzbuzz_prompt(ctx):
+def arch_implement_add_prompt(ctx):
     return (
-        "Alex needs a function `fizzbuzz(n: int) -> str` that returns the "
-        "FizzBuzz sequence from 1 to n inclusive, space-separated: numbers "
-        "divisible by 3 as 'Fizz', by 5 as 'Buzz', by both as 'FizzBuzz'. "
+        "Alex needs a function `add(a, b) -> int` that returns a + b. "
         "Write it in main.py and run the tests until they pass."
     )
 
 
-def arch_implement_fizzbuzz_goal(world: World, ctx) -> bool:
+def arch_implement_add_goal(world: World, ctx) -> bool:
     code = world.get("files").get("main", {}).get("content", "")
     hidden = (
         'def test():\n'
-        '    r = fizzbuzz(15)\n'
-        '    return r == "1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz"\n'
+        '    if add(0, 0) != 0: return False\n'
+        '    if add(-1, 1) != 0: return False\n'
+        '    return add(10, 32) == 42\n'
     )
     ok = _run_code(code, hidden)
     return ok, [] if ok else ["hidden_suite_failed"]
@@ -389,7 +390,7 @@ def _empty_inbox(rng, ctx, world):
 
 CODING = DomainSpec(
     name="coding",
-    version="0.1.0",
+    version="0.2.0",
     entities={
         "files": EntitySpec({"id": str, "name": str, "content": str}),
         "tests": EntitySpec({"id": str, "name": str, "visible": bool, "fn": str}),
@@ -420,10 +421,10 @@ CODING = DomainSpec(
     rules={},
     rule_sources={},
     archetypes={
-        "implement_fizzbuzz": {
-            "role": "write", "sample": arch_implement_fizzbuzz,
-            "prompt": arch_implement_fizzbuzz_prompt, "inbox": _empty_inbox,
-            "goal": arch_implement_fizzbuzz_goal,
+        "implement_add": {
+            "role": "write", "sample": arch_implement_add,
+            "prompt": arch_implement_add_prompt, "inbox": _empty_inbox,
+            "goal": arch_implement_add_goal,
         },
         "implement_cart_total": {
             "role": "write", "sample": arch_implement_cart_total,
