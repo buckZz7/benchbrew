@@ -143,7 +143,7 @@ traces to a real policy):
    holds funds; direct payments bypass protection) + FTC consumer fraud
    guidance on off-platform payment requests.
 
-## Review gate (marketplace lane, pending)
+## Review gate (marketplace lane — superseded by the calibration gate)
 
 ### local_services calibration (v0.2, seed 42, 36 tasks — 18 archetypes × 2)
 
