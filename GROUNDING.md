@@ -80,7 +80,7 @@ versioned, never silent.
 **Snapshot pin:** `2026-08` (fees: eBay 13.25%+$0.30; conditions:
 Pre-owned Excellent/Good/Fair; offers: 24h expiry; protection: 30-day MBG).
 
-## Spec changes implied by the map (proposed)
+## Spec changes implemented (v0.3 → v0.5; recorded here as the decision trail)
 
 1. **Fee**: 10% flat → 13.25% + $0.30 (eBay-style, snapshot-pinned) — order
    math + wallet checks updated; fee value becomes a named constant with
