@@ -249,3 +249,17 @@ The marketplace machinery with LOW-mediation policy. Sources:
 - **No platform mediation**: the platform does not mediate disputes or
   refunds — the agent surfaces the truth to Alex instead of filing
   nonexistent claims.
+
+### marketplace_lowmediation calibration (v0.1, seed 42, 28 tasks — 7 archetypes x 4) + DROP decision
+
+| Model | Score | calls/task | tool-error rate |
+|---|---|---|---|
+| Qwen3-4B (weak) | 0.429 | 0.6 | 11.1% |
+| Qwen3.6-27B IQ2 (strong) | 0.5 | 1.1 | 9.4% |
+
+**Verdict: DROPPED as a lane (2026-08-09).** Gap 0.071 < 0.15 (compressed) AND
+strong 0.5 >= marketplace's 0.40 honest score. The archetypes are single-decision
+scam-detection tasks that the weak model passes at parity — the axis is already
+measured by marketplace (detection) and local_services (payment-gated release).
+Retained in the repo as a documented PLATFORM profile variant (the machinery
+demonstrates the profile concept; the calibration proves it is not a lane).

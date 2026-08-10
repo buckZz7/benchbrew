@@ -54,7 +54,7 @@ secrecy; the pool is unbounded, so memorizing it is uneconomical.
 | local_services v0.2 | booking lifecycle: escrow release, cancellation windows, provider standing | 0.53 | 0.72 | 0.19 |
 | personal_finance v0.1 | the money agent: Reg E reporting clock, budgets, subscriptions, fraud | 0.35 | 0.65 | 0.31 |
 | travel v0.2 | itinerary orchestration: DOT booking clock, hotel/car windows, disruption rebook | 0.11 | 0.75 | 0.64 |
-| marketplace_lowmediation v0.1 | agent-as-safety-net: no escrow, no protection — the agent IS the trust layer | *calibrating* | | |
+| marketplace_lowmediation v0.1 | agent-as-safety-net profile — measured, gap 0.07 (compressed), DROPPED as a lane; kept as a profile variant | 0.43 | 0.50 | 0.07 |
 
 Every lane hits a calibration window (weak ~0.3-0.5, strong ~0.85, gap >= 0.15):
 compression (weak ~= strong) is the worst failure — the ruler is blind; saturation
