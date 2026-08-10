@@ -453,6 +453,10 @@ def emit_tau2_domain(spec: DomainSpec, seed: int, tasks: list[dict],
     out_tasks = []
     for t in tasks:
         promoted = json.loads(t["initial_world"].canonical())["collections"]
+        # the plain emitter's inbox rendering materializes collections that
+        # are NOT part of this spec (e.g. "users" via world.get) — the τ²
+        # world is exactly the spec's entities + task_ctx, nothing else
+        promoted = {k: v for k, v in promoted.items() if k in spec.entities}
         promoted["task_ctx"] = t["ctx"]
         env_assertions = [{
             "env_type": "assistant",  # ToolRequestor = user | assistant

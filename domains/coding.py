@@ -141,7 +141,9 @@ def _seed(world: World, starter: str, visible_tests: dict) -> None:
 # --- implement family -------------------------------------------------------
 
 def arch_implement_fizzbuzz(rng, world, i):
-    _seed(world, "", {})
+    _seed(world, "", {
+        "small": "def test():\n    return fizzbuzz(5) == '1 2 Fizz 4 Buzz'\n",
+    })
     return {"file_id": "main", "task": "implement_fizzbuzz"}
 
 
@@ -166,7 +168,9 @@ def arch_implement_fizzbuzz_goal(world: World, ctx) -> bool:
 
 
 def arch_implement_cart_total(rng, world, i):
-    _seed(world, "", {})
+    _seed(world, "", {
+        "small": "def test():\n    return cart_total([(2.0, 3)]) == 6.0\n",
+    })
     return {"file_id": "main", "task": "implement_cart_total"}
 
 

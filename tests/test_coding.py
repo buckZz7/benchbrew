@@ -38,6 +38,24 @@ class TestSpec(unittest.TestCase):
             self.assertTrue(all(tt["visible"] for tt in tests.values()),
                             "world leaked a hidden test")
 
+    def test_emitted_agent_data_is_exactly_spec_entities_plus_ctx(self):
+        # regression: the plain emitter materializes a "users" collection via
+        # world.get during inbox rendering; the τ² emission must NOT carry it
+        import json
+        import tempfile
+        from pathlib import Path
+        from benchbrew.emitter_tau2 import emit_tau2_domain
+        from benchbrew.spec import World
+        with tempfile.TemporaryDirectory() as d:
+            w, tasks = Generator(CODING).generate(65, 3)
+            emit_tau2_domain(CODING, 65, tasks, w, Path(d))
+            t = json.loads((Path(d) / "data" / "tau2" / "domains" / "coding"
+                            / "tasks.json").read_text())[0]
+            keys = set(t["initial_state"]["initialization_data"]["agent_data"])
+            self.assertEqual(
+                keys, set(CODING.entities) | {"task_ctx"},
+                f"agent_data leaked collections outside the spec: {keys}")
+
 
 class TestSandbox(unittest.TestCase):
     def test_correct_code_passes(self):
